@@ -2,14 +2,16 @@ required_columns:
   columns:
     - name
     - age
+    - phone
 
 missing_values:
   columns:
     - name
     - age
+    - phone
 
 duplicates:
   subset: []
 
 validation:
-  max_errors: 10
+  max_errors: 50
