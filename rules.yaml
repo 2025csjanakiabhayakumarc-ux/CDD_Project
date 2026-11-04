@@ -2,11 +2,13 @@ required_columns:
   columns:
     - name
     - age
+    - email
 
 missing_values:
   columns:
     - name
     - age
+    - email
 
 duplicates:
   subset: []
