@@ -1,0 +1,15 @@
+required_columns:
+  columns:
+    - name
+    - age
+
+missing_values:
+  columns:
+    - name
+    - age
+
+duplicates:
+  subset: []
+
+validation:
+  max_errors: 10
