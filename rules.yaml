@@ -3,15 +3,17 @@ required_columns:
     - name
     - age
     - email
+    - phone
 
 missing_values:
   columns:
     - name
     - age
     - email
+    - phone
 
 duplicates:
   subset: []
 
 validation:
-  max_errors: 10
+  max_errors: 50
