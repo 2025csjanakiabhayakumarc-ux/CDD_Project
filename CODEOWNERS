@@ -1,0 +1,30 @@
+# CODEOWNERS — DataGuard
+# Format: <path pattern>  @<github-username>
+# Replace @member2 ... @member5 with your teammates' actual GitHub usernames.
+
+# Member 1 — Git & Collaboration (Janaki): owns Git workflow files and required_columns / missing_values rules
+/.github/                      @2025csjanakiabhayakumarc-ux
+/CODEOWNERS                    @2025csjanakiabhayakumarc-ux
+/src/rules/required_columns.py @2025csjanakiabhayakumarc-ux
+/src/rules/missing_values.py   @2025csjanakiabhayakumarc-ux
+
+# Member 2 — CI/CD Engineer: owns GitHub Actions, test framework, sample CSVs, duplicates rule
+/.github/workflows/            @member2
+/tests/                        @member2
+/sample_data/                  @member2
+/src/rules/duplicates.py       @member2
+
+# Member 3 — Container & IaC Engineer: owns Dockerfile, Compose, CLI entry point, rules loader
+/Dockerfile                    @member3
+/.dockerignore                 @member3
+/docker-compose.yml            @member3
+/src/cli.py                    @member3
+/rules.yaml                    @member3
+
+# Member 4 — UX Researcher: owns range/format rules and fix-hint messages
+/src/rules/range_and_format.py @member4
+/src/hints/                    @member4
+
+# Member 5 — UI/Interaction Designer: owns Flask app and HTML report templates
+/src/app/                      @member5
+/templates/                    @member5
