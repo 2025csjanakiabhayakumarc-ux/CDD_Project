@@ -3,8 +3,7 @@
 import pandas as pd
 import pytest
 
-from src.rules.required_columns import check, RULE_ID
-
+from src.rules.required_columns import RULE_ID, check
 
 # ---------------------------------------------------------------------------
 # Fixtures

@@ -9,8 +9,6 @@ Interface (same for every rule module):
 
 from __future__ import annotations
 
-from typing import List
-
 import pandas as pd
 
 from src.rules._base import Finding
@@ -18,7 +16,7 @@ from src.rules._base import Finding
 RULE_ID = "required_columns"
 
 
-def check(df: pd.DataFrame, columns: List[str] | None = None, **_) -> List[Finding]:
+def check(df: pd.DataFrame, columns: list[str] | None = None, **_) -> list[Finding]:
     """Return one Finding per missing required column, or [] if all present."""
     if not columns:
         return []
