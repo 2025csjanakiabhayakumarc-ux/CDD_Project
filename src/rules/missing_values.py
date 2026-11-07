@@ -11,8 +11,6 @@ Interface (same for every rule module):
 
 from __future__ import annotations
 
-from typing import List
-
 import pandas as pd
 
 from src.rules._base import Finding
@@ -20,12 +18,12 @@ from src.rules._base import Finding
 RULE_ID = "missing_values"
 
 
-def check(df: pd.DataFrame, columns: List[str] | None = None, **_) -> List[Finding]:
+def check(df: pd.DataFrame, columns: list[str] | None = None, **_) -> list[Finding]:
     """Return one Finding per empty/NaN cell in each watched column."""
     if not columns or df.empty:
         return []
 
-    findings: List[Finding] = []
+    findings: list[Finding] = []
     for col in columns:
         if col not in df.columns:
             # Column absence is required_columns' job; skip silently here.

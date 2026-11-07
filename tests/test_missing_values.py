@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.rules.missing_values import check, RULE_ID
+from src.rules.missing_values import RULE_ID, check
 
 DATA = Path(__file__).parent.parent / "sample_data"
 
@@ -86,7 +86,6 @@ def test_whitespace_only_cell_reported(gaps_df):
 def test_multiple_columns_all_gaps_found(gaps_df):
     findings = check(gaps_df, columns=["name", "age", "email"])
     # Rows 1-4 each have at least one gap across the three columns
-    reported_messages = [f.message for f in findings]
     assert len(findings) >= 4
 
 
