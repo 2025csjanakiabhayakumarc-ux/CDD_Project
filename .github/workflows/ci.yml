@@ -47,3 +47,10 @@ jobs:
             --cov=src \
             --cov-report=term-missing \
             --cov-fail-under=80
+
+  dataset-gate:
+    name: Reusable Dataset Gate
+    needs: test
+    uses: ./.github/workflows/dataset-gate.yml
+    with:
+      dataset_path: sample_data/good.csv
