@@ -1,6 +1,4 @@
 
-import pandas as pd
-
 
 def find_duplicates(df, subset=None):
     """
