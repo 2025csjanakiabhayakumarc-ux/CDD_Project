@@ -35,7 +35,9 @@ def check(df: pd.DataFrame, columns: list[str] | None = None, **_) -> list[Findi
         for row_idx in df.index[is_blank]:
             findings.append(
                 Finding(
-                    rule=RULE_ID,
+                    rule_id=RULE_ID,
+                    row=int(row_idx),
+                    column=col,
                     message=f"Missing value at row {row_idx}, column '{col}'",
                     hint=f"Fill in a value for column '{col}' in row {row_idx}.",
                 )
