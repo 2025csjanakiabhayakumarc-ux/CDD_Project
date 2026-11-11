@@ -1,0 +1,6 @@
+
+services:
+  dataguard:
+    build: .
+    container_name: dataguard
+
