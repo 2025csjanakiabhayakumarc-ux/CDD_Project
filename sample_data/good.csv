@@ -1,5 +1,5 @@
-name,age
-Anu,20
-Ravi,21
-Priya,22
-Kiran,23
+name,age,email
+Anu,20,anu@example.com
+Ravi,21,ravi@example.com
+Priya,22,priya@example.com
+Kiran,23,kiran@example.com
