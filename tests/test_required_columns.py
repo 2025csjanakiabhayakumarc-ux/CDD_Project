@@ -55,7 +55,7 @@ def test_columns_kwarg_omitted_passes(good_df):
 def test_one_missing_column_returns_finding(bad_df):
     findings = check(bad_df, columns=["name", "age", "email"])
     assert len(findings) == 1
-    assert findings[0].rule == RULE_ID
+    assert findings[0].rule_id == RULE_ID
     assert "email" in findings[0].message
 
 

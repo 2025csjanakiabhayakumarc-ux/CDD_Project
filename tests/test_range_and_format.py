@@ -29,7 +29,7 @@ def test_invalid_percentage():
     findings = check(df, percentage_columns=["marks"])
 
     assert len(findings) == 1
-    assert findings[0].rule == RULE_ID
+    assert findings[0].rule_id == RULE_ID
     assert "percentage" in findings[0].message.lower()
 
 

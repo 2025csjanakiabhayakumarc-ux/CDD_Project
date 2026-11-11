@@ -64,11 +64,10 @@ def check(
             if not valid:
                 findings.append(
                     Finding(
-                        rule=RULE_ID,
-                        message=(
-                            f"Invalid percentage at row {row_idx}, "
-                            f"column '{col}': {value}"
-                        ),
+                        rule_id=RULE_ID,
+                        row=row_idx,
+                        column=col,
+                        message=f"Invalid percentage at row {row_idx}, column '{col}': {value}",
                         hint=percentage_hint(col),
                     )
                 )
@@ -91,11 +90,10 @@ def check(
             if not valid:
                 findings.append(
                     Finding(
-                        rule=RULE_ID,
-                        message=(
-                            f"Invalid date at row {row_idx}, "
-                            f"column '{col}': {value}"
-                        ),
+                        rule_id=RULE_ID,
+                        row=row_idx,
+                        column=col,
+                        message=f"Invalid date at row {row_idx}, column '{col}': {value}",
                         hint=date_hint(col, date_format),
                     )
                 )
@@ -114,11 +112,10 @@ def check(
             if not EMAIL_PATTERN.fullmatch(email):
                 findings.append(
                     Finding(
-                        rule=RULE_ID,
-                        message=(
-                            f"Invalid email at row {row_idx}, "
-                            f"column '{col}': {value}"
-                        ),
+                        rule_id=RULE_ID,
+                        row=row_idx,
+                        column=col,
+                        message=f"Invalid email at row {row_idx}, column '{col}': {value}",
                         hint=email_hint(col),
                     )
                 )
