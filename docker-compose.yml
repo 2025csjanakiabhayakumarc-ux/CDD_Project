@@ -3,4 +3,5 @@ services:
   dataguard:
     build: .
     container_name: dataguard
-
+    ports:
+      - "5000:5000"
