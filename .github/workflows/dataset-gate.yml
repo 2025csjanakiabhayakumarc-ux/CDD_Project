@@ -1,0 +1,62 @@
+
+name: Reusable Dataset Gate
+
+on:
+  workflow_call:
+    inputs:
+      dataset_path:
+        description: "Path to the CSV dataset"
+        required: false
+        type: string
+        default: "sample_data/good.csv"
+
+jobs:
+  dataset-validation:
+    name: Validate Dataset
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check dataset
+        env:
+          DATASET_PATH: ${{ inputs.dataset_path }}
+        run: |
+          python -c "
+          import os
+          import pandas as pd
+
+          path = os.environ['DATASET_PATH']
+
+          if not os.path.isfile(path):
+              raise SystemExit(f'Dataset not found: {path}')
+
+          df = pd.read_csv(path)
+
+          required_columns = {'name', 'age'}
+          missing = required_columns - set(df.columns)
+
+          if missing:
+              raise SystemExit(f'Missing required columns: {missing}')
+
+          if df.empty:
+              raise SystemExit('Dataset is empty')
+
+          if df.duplicated().any():
+              raise SystemExit('Duplicate rows found')
+
+          print('Dataset Gate passed!')
+          "
