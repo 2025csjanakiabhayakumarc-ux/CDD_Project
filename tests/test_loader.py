@@ -7,10 +7,10 @@ integration with the missing_values and required_columns rule interfaces.
 
 from pathlib import Path
 
-import pytest
 import pandas as pd
+import pytest
 
-from src.loader import load_csv, UnreadableFileError
+from src.loader import UnreadableFileError, load_csv
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

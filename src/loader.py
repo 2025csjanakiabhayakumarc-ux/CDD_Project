@@ -12,7 +12,6 @@ from __future__ import annotations
 import csv
 import io
 from pathlib import Path
-from typing import Union
 
 import pandas as pd
 
@@ -25,7 +24,7 @@ class UnreadableFileError(Exception):
     """Raised when a CSV file cannot be decoded or parsed."""
 
 
-def load_csv(path: Union[str, Path]) -> pd.DataFrame:
+def load_csv(path: str | Path) -> pd.DataFrame:
     """Load a CSV file into a DataFrame with auto-detected encoding and delimiter.
 
     Parameters
