@@ -1,9 +1,12 @@
+# Python cache files
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+
+# Test and coverage files
 .pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environment
 .venv/
 venv/
-*.egg-info/
-dist/
-.env
