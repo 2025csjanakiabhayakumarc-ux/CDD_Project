@@ -107,7 +107,7 @@ def test_all_null_column_reports_every_row(all_null_df):
 
 def test_finding_has_correct_rule_id(gaps_df):
     findings = check(gaps_df, columns=["age"])
-    assert all(f.rule == RULE_ID for f in findings)
+    assert all(f.rule_id == RULE_ID for f in findings)
 
 
 def test_finding_includes_column_name_in_message(gaps_df):
