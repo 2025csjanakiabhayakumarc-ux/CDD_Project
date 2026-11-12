@@ -27,7 +27,9 @@ def check(df: pd.DataFrame, columns: list[str] | None = None, **_) -> list[Findi
 
     return [
         Finding(
-            rule=RULE_ID,
+            rule_id=RULE_ID,
+            row=None,
+            column=None,
             message=f"Missing required column(s): {', '.join(missing)}",
             hint=f"Add the following column(s) to your CSV: {', '.join(missing)}",
         )

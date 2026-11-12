@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Could not read file · DataGuard{% endblock %}
+
+{% block content %}
+<section class="card empty empty-error">
+  <svg viewBox="0 0 64 64" width="64" height="64" aria-hidden="true"><circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" stroke-width="4"/><path d="M32 18v18M32 44v2" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/></svg>
+  <h1>We could not read that file</h1>
+  <p class="muted">{{ filename }}</p>
+  <p>{{ message }}</p>
+  <div class="tips">
+    <h2>Things to try</h2>
+    <ul>
+      <li>In Excel or Sheets, choose <em>Save as</em> and pick <em>CSV</em>.</li>
+      <li>Make sure the first line holds your column headings.</li>
+      <li>Check the file is not empty and is under 5 MB.</li>
+    </ul>
+  </div>
+  <a class="btn btn-primary" href="{{ url_for('index') }}">Try another file</a>
+</section>
+{% endblock %}
