@@ -6,6 +6,8 @@ or gives back, this is the ONLY file you need to edit.
 
 Two modes:
   * DataGuard engine: used when src/loader.py and the rule modules exist.
+    Every rule is called as check(df, **settings), where the settings come
+    from that rule's section in rules.yaml.
   * Demo engine: a small built-in checker, so the UI works on its own
     while the rest of the team is still building.
 """
@@ -16,6 +18,7 @@ import dataclasses
 import importlib
 import io
 import os
+import re
 import shutil
 import tempfile
 from dataclasses import dataclass, field
@@ -31,6 +34,14 @@ RULES = (
     ("range_and_format", ("src.rules.range_and_format",), ("check",)),
 )
 
+# These rules still work with no settings (duplicates checks every column).
+RUNS_WITHOUT_SETTINGS = {"duplicates"}
+
+# The team's rules count rows from 0 (the first data row is "row 0"). Spreadsheet
+# users see the heading as row 1 and the first data row as row 2, so we add 2.
+# If the team ever changes the rules to use spreadsheet rows, set this to 0.
+ROW_OFFSET = 2
+
 # Plain-language tips used until a rule supplies its own hint (Member 4's job).
 DEFAULT_HINTS = {
     "required_columns": "Add the missing column to your file, or fix the spelling of its heading.",
@@ -44,6 +55,9 @@ _SEVERITY_WORDS = {
     "warning": "warning", "warn": "warning", "medium": "warning",
     "info": "info", "information": "info", "notice": "info", "low": "info",
 }
+
+_LOCATION = re.compile(r"row\s+(\d+).*?column\s+'([^']+)'", re.IGNORECASE)
+_ROW_WORD = re.compile(r"\b(row|index) (\d+)\b", re.IGNORECASE)
 
 
 class UnreadableUpload(Exception):
@@ -169,6 +183,47 @@ def _load_engine():
     }
 
 
+def _config_path() -> Path:
+    override = os.environ.get("DATAGUARD_RULES")
+    if override:
+        return Path(override)
+    return Path(__file__).resolve().parents[2] / "rules.yaml"  # the repo root
+
+
+def _load_config() -> tuple[dict, str]:
+    """Read rules.yaml. Returns (settings, note). The note is empty when all is well."""
+    try:
+        import yaml
+    except ImportError:
+        return {}, "PyYAML is not installed, so rules.yaml could not be read. Run: pip install pyyaml"
+    path = _config_path()
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except OSError:
+        return {}, f"The settings file ({path.name}) was not found, so most checks were skipped."
+    except yaml.YAMLError:
+        return {}, f"The settings file ({path.name}) could not be understood. Check its formatting."
+    if not isinstance(data, dict):
+        return {}, f"The settings file ({path.name}) is not in the expected format."
+    return data, ""
+
+
+def _tidy(finding: UiFinding) -> UiFinding:
+    """Fill in row and column from the message text, and use spreadsheet row numbers."""
+    match = _LOCATION.search(finding.message)
+    if match:
+        finding.row = finding.row or match.group(1)
+        finding.column = finding.column or match.group(2)
+    if ROW_OFFSET and finding.row.isdigit():
+        def shift(text: str) -> str:
+            return _ROW_WORD.sub(lambda m: f"row {int(m.group(2)) + ROW_OFFSET}", text)
+
+        finding.row = str(int(finding.row) + ROW_OFFSET)
+        finding.message = shift(finding.message)
+        finding.hint = shift(finding.hint)
+    return finding
+
+
 def _normalise(item, rule: str) -> UiFinding:
     """Turn whatever a rule returns for one problem into a UiFinding."""
     if isinstance(item, dict):
@@ -188,13 +243,15 @@ def _normalise(item, rule: str) -> UiFinding:
         return ""
 
     severity = _SEVERITY_WORDS.get(pick("severity", "level").lower(), "error")
-    return UiFinding(
-        rule=pick("rule", "rule_name", "name") or rule,
-        message=pick("message", "msg", "description", "detail") or "A problem was found here.",
-        severity=severity,
-        column=pick("column", "col", "field"),
-        row=pick("row", "row_number", "line", "index"),
-        hint=pick("hint", "fix_hint", "suggestion", "fix"),
+    return _tidy(
+        UiFinding(
+            rule=pick("rule_id", "rule", "rule_name", "name") or rule,
+            message=pick("message", "msg", "description", "detail") or "A problem was found here.",
+            severity=severity,
+            column=pick("column", "col", "field"),
+            row=pick("row", "row_number", "line", "index"),
+            hint=pick("hint", "fix_hint", "suggestion", "fix"),
+        )
     )
 
 
@@ -218,22 +275,22 @@ def _to_findings(result, rule: str) -> list[UiFinding]:
     return [_normalise(item, rule) for item in result]
 
 
-def _call_rule(fn, name, df, required):
-    """Call one rule. Returns (findings, note)."""
+def _call_rule(fn, name, df, settings, required):
+    """Call one rule as fn(df, **settings). Returns (findings, note); findings is None if skipped."""
+    kwargs = dict(settings) if isinstance(settings, dict) else {}
+    if name == "required_columns" and required:
+        kwargs["columns"] = required  # columns typed on the upload page win
+    if name in RUNS_WITHOUT_SETTINGS:
+        if not kwargs.get("subset"):
+            kwargs.pop("subset", None)  # an empty list means "check every column"
+    elif not any(kwargs.values()):
+        return None, f"The {name} check was skipped because rules.yaml has no settings for it."
     try:
-        return _to_findings(fn(df), name), ""
-    except TypeError:
-        pass
+        return _to_findings(fn(df, **kwargs), name), ""
+    except KeyError:
+        return None, f"The {name} check was skipped because a column named in rules.yaml is not in your file."
     except Exception as exc:  # noqa: BLE001 - a crashing rule must not break the page
-        return [], f"The {name} check stopped with an error: {exc}"
-    if name == "required_columns":
-        if not required:
-            return [], "Type the required column names (optional box on the upload page) to run the required-columns check."
-        try:
-            return _to_findings(fn(df, required), name), ""
-        except Exception as exc:  # noqa: BLE001 - show a note instead of crashing
-            return [], f"The {name} check could not run: {exc}. Update service.py to match its inputs."
-    return [], f"The {name} check was skipped because its inputs did not match. Update service.py."
+        return None, f"The {name} check could not run: {exc}. Update service.py to match its inputs."
 
 
 def _run_engine(engine, filename, data, required, report):
@@ -247,13 +304,20 @@ def _run_engine(engine, filename, data, required, report):
             raise UnreadableUpload(str(exc) or "We could not read this file as a table.") from exc
         report.rows = len(df)
         report.columns = [str(c) for c in df.columns]
+
+        config, config_note = _load_config()
+        if config_note:
+            report.notes.append(config_note)
+
         findings: list[UiFinding] = []
         for name, fn in engine["rules"]:
-            found, note = _call_rule(fn, name, df, required)
-            report.rules_run.append(name)
-            findings.extend(found)
+            found, note = _call_rule(fn, name, df, config.get(name), required)
             if note:
                 report.notes.append(note)
+            if found is None:
+                continue
+            report.rules_run.append(name)
+            findings.extend(found)
         return findings
     finally:
         shutil.rmtree(folder, ignore_errors=True)

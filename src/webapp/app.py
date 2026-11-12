@@ -51,6 +51,7 @@ def create_app() -> Flask:
 
 if __name__ == "__main__":
     create_app().run(
-        host=os.environ.get("HOST", "127.0.0.1"),  # use HOST=0.0.0.0 inside Docker
+        # Inside Docker the app must listen on all addresses, or the browser cannot reach it.
+        host=os.environ.get("HOST", "0.0.0.0" if os.path.exists("/.dockerenv") else "127.0.0.1"),
         port=int(os.environ.get("PORT", "5000")),
     )
