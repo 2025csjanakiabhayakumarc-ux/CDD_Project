@@ -43,6 +43,22 @@
   <div class="banner banner-warning" role="status">{{ note }}</div>
   {% endfor %}
 
+  {% if report.auto_detect and report.explanations %}
+  <details class="card" style="margin-bottom:1rem">
+    <summary><strong>Detected rules</strong> (auto-detect)</summary>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Column</th><th>Detected as</th></tr></thead>
+        <tbody>
+          {% for col, reason in report.explanations.items() %}
+          <tr><td>{{ col }}</td><td>{{ reason }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endif %}
+
   <p class="rules-run"><span class="muted">Rules checked:</span>
     {% for r in report.rules_run %}<span class="pill">{{ r }}</span>{% endfor %}
   </p>

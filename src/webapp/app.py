@@ -33,7 +33,8 @@ def create_app() -> Flask:
             return render_template("index.html", error="That file type is not supported. Please upload a .csv file."), 400
 
         required = [c.strip() for c in request.form.get("required", "").split(",") if c.strip()]
-        report = service.analyze_upload(upload.filename, upload.read(), required)
+        auto_detect = request.form.get("rule_mode") == "auto"
+        report = service.analyze_upload(upload.filename, upload.read(), required, auto_detect=auto_detect)
         if report.error:
             return render_template("error.html", message=report.error, filename=report.filename), 422
         return render_template("report.html", report=report)
