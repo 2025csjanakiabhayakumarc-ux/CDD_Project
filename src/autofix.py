@@ -27,14 +27,14 @@ def fix(
     _strip_whitespace(out, log)
     _lowercase_emails(out, email_columns or [], log)
     _normalize_dates(out, date_columns or [], date_format, log)
-    _drop_exact_duplicates(out, log)
+    out = _drop_exact_duplicates(out, log)
 
     return out, log
 
 
 def _strip_whitespace(df: pd.DataFrame, log: list[dict]) -> None:
     for col in df.columns:
-        if df[col].dtype != object:
+        if not pd.api.types.is_string_dtype(df[col]):
             continue
         for idx in df.index:
             val = df.at[idx, col]
@@ -110,7 +110,7 @@ def _try_parse(value: str) -> datetime | None:
     return None
 
 
-def _drop_exact_duplicates(df: pd.DataFrame, log: list[dict]) -> int:
+def _drop_exact_duplicates(df: pd.DataFrame, log: list[dict]) -> pd.DataFrame:
     mask = df.duplicated(keep="first")
     dup_indices = df.index[mask].tolist()
     for idx in dup_indices:
@@ -121,6 +121,4 @@ def _drop_exact_duplicates(df: pd.DataFrame, log: list[dict]) -> int:
             "after": "removed",
             "fix": "drop duplicate",
         })
-    df.drop(index=dup_indices, inplace=True)
-    df.reset_index(drop=True, inplace=True)
-    return len(dup_indices)
+    return df.drop(index=dup_indices).reset_index(drop=True)
