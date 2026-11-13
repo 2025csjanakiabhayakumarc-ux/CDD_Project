@@ -1,0 +1,16 @@
+emp_id,name,email,phone,join_date,salary
+E001,Priya Sharma,priya@company.com,9876543210,2022-01-15,55000
+E002,Rahul Verma,rahul@company.com,9876543211,2022-03-20,62000
+E003,Anita Desai,anita-bad-email,9876543212,2022-06-01,48000
+E004,,meena@company.com,9876543213,2022-08-10,51000
+E005,Suresh Kumar,suresh@company.com,9876543214,2022-13-15,59000
+E006,Kavita Nair,kavita@company.com,9876543215,2023-01-05,67000
+E007,Amit Patel,amit@company.com,9876543216,2023-03-18,54000
+E008,Deepa Reddy,deepa@company.com,9876543217,2023-05-22,71000
+E009,Vijay Singh,vijay@company.com,9876543218,2023-07-30,
+E010,Lakshmi Iyer,lakshmi@company.com,9876543219,2023-09-12,58000
+E011,Ravi Joshi,ravi@company.com,9876543220,2023-11-01,63000
+E001,Priya Sharma,priya@company.com,9876543210,2022-01-15,55000
+E013,Sunita Rao,sunita@company.com,9876543222,2024-01-10,52000
+E014,Karthik Menon,karthik@company.com,9876543223,2024-03-01,66000
+E015,Divya Gupta,divya@company.com,9876543224,2024-05-15,49000

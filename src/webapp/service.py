@@ -32,6 +32,7 @@ RULES = (
     ("missing_values", ("src.rules.missing_values",), ("check",)),
     ("duplicates", ("src.rules.duplicates", "src.duplicates"), ("check", "find_duplicates")),
     ("range_and_format", ("src.rules.range_and_format",), ("check",)),
+    ("india_formats", ("src.rules.india_formats",), ("check",)),
 )
 
 # These rules still work with no settings (duplicates checks every column).
@@ -87,6 +88,10 @@ class Report:
     notes: list = field(default_factory=list)
     engine: str = "demo"
     error: str = ""
+    auto_detect: bool = False
+    explanations: dict = field(default_factory=dict)
+    fix_summary: str = ""
+    fix_log: list = field(default_factory=list)
 
     @property
     def truncated(self) -> bool:
@@ -104,7 +109,13 @@ class Report:
 # --------------------------------------------------------------------------
 # Public function
 # --------------------------------------------------------------------------
-def analyze_upload(filename: str, data: bytes, required: list[str] | None = None) -> Report:
+def analyze_upload(
+    filename: str,
+    data: bytes,
+    required: list[str] | None = None,
+    config_path: str | None = None,
+    auto_detect: bool = False,
+) -> Report:
     """Check an uploaded file and return a Report for the pages to show."""
     required = required or []
     report = Report(filename=filename)
@@ -112,7 +123,10 @@ def analyze_upload(filename: str, data: bytes, required: list[str] | None = None
         engine = _load_engine()
         if engine:
             report.engine = "dataguard"
-            findings = _run_engine(engine, filename, data, required, report)
+            findings = _run_engine(
+                engine, filename, data, required, report,
+                config_path=config_path, auto_detect=auto_detect,
+            )
         else:
             report.engine = "demo"
             findings = _run_demo(data, required, report)
@@ -120,8 +134,58 @@ def analyze_upload(filename: str, data: bytes, required: list[str] | None = None
         report.error = str(exc)
         return report
 
+    # Compute auto-fix summary
+    try:
+        fix_summary, fix_log = _compute_fix_summary(data)
+        report.fix_summary = fix_summary
+        report.fix_log = fix_log[:10]
+    except Exception:  # noqa: BLE001, S110
+        pass
+
     _finish(report, findings)
     return report
+
+
+def get_cleaned_csv(data: bytes) -> tuple[bytes, str]:
+    """Return (cleaned_csv_bytes, summary_text) for a previously uploaded file."""
+    try:
+        autofix = importlib.import_module("src.autofix")
+        loader = importlib.import_module("src.loader")
+    except ImportError:
+        return data, ""
+
+    folder = Path(tempfile.mkdtemp(prefix="dataguard_fix_"))
+    try:
+        path = folder / "upload.csv"
+        path.write_bytes(data)
+        df = loader.load_csv(str(path))
+        fixed_df, log = autofix.fix(df)
+        csv_bytes = fixed_df.to_csv(index=False).encode("utf-8")
+        cells_fixed = sum(1 for e in log if e["fix"] != "drop duplicate")
+        dups_removed = sum(1 for e in log if e["fix"] == "drop duplicate")
+        summary = f"{cells_fixed} cells fixed, {dups_removed} duplicate rows removed"
+        return csv_bytes, summary
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+def _compute_fix_summary(data: bytes) -> tuple[str, list[dict]]:
+    """Run autofix on data and return (summary_text, change_log)."""
+    autofix = importlib.import_module("src.autofix")
+    loader = importlib.import_module("src.loader")
+
+    folder = Path(tempfile.mkdtemp(prefix="dataguard_fix_"))
+    try:
+        path = folder / "upload.csv"
+        path.write_bytes(data)
+        df = loader.load_csv(str(path))
+        _, log = autofix.fix(df)
+        cells_fixed = sum(1 for e in log if e["fix"] != "drop duplicate")
+        dups_removed = sum(1 for e in log if e["fix"] == "drop duplicate")
+        summary = f"{cells_fixed} cells fixed, {dups_removed} duplicate rows removed"
+        return summary, log
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 # --------------------------------------------------------------------------
@@ -176,11 +240,22 @@ def _load_engine():
         fn = _find_function(modules, names)
         if fn:
             rules.append((name, fn))
+    load_file = getattr(loader, "load_file", load_csv)
     return {
         "load_csv": load_csv,
+        "load_file": load_file,
         "unreadable": getattr(loader, "UnreadableFileError", UnreadableUpload),
         "rules": rules,
     }
+
+
+def _infer_config(df) -> tuple[dict, dict[str, str]]:
+    """Use src.infer to auto-detect rules from the DataFrame."""
+    try:
+        infer_mod = importlib.import_module("src.infer")
+        return infer_mod.infer_config(df)
+    except ImportError:
+        return {}, {}
 
 
 def _config_path() -> Path:
@@ -188,6 +263,24 @@ def _config_path() -> Path:
     if override:
         return Path(override)
     return Path(__file__).resolve().parents[2] / "rules.yaml"  # the repo root
+
+
+def _load_config_from(path_str: str) -> tuple[dict, str]:
+    """Load a specific YAML config. Returns (settings, note)."""
+    try:
+        import yaml
+    except ImportError:
+        return {}, "PyYAML is not installed."
+    path = Path(path_str)
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except OSError:
+        return {}, f"Template file ({path.name}) not found."
+    except yaml.YAMLError:
+        return {}, f"Template file ({path.name}) could not be parsed."
+    if not isinstance(data, dict):
+        return {}, f"Template file ({path.name}) is not in the expected format."
+    return data, ""
 
 
 def _load_config() -> tuple[dict, str]:
@@ -293,21 +386,31 @@ def _call_rule(fn, name, df, settings, required):
         return None, f"The {name} check could not run: {exc}. Update service.py to match its inputs."
 
 
-def _run_engine(engine, filename, data, required, report):
+def _run_engine(engine, filename, data, required, report, config_path=None, auto_detect=False):
     folder = Path(tempfile.mkdtemp(prefix="dataguard_"))
     try:
         path = folder / ("upload" + (Path(filename).suffix or ".csv"))
         path.write_bytes(data)
+        load_fn = engine.get("load_file", engine["load_csv"])
         try:
-            df = engine["load_csv"](str(path))
+            df = load_fn(str(path))
         except engine["unreadable"] as exc:
             raise UnreadableUpload(str(exc) or "We could not read this file as a table.") from exc
         report.rows = len(df)
         report.columns = [str(c) for c in df.columns]
 
-        config, config_note = _load_config()
-        if config_note:
-            report.notes.append(config_note)
+        if auto_detect:
+            config, explanations = _infer_config(df)
+            report.auto_detect = True
+            report.explanations = explanations
+        elif config_path:
+            config, config_note = _load_config_from(config_path)
+            if config_note:
+                report.notes.append(config_note)
+        else:
+            config, config_note = _load_config()
+            if config_note:
+                report.notes.append(config_note)
 
         findings: list[UiFinding] = []
         for name, fn in engine["rules"]:

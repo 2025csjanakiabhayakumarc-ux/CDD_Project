@@ -1,0 +1,14 @@
+required_columns:
+  columns: [order_id, customer_email, order_date, amount, discount_pct]
+
+missing_values:
+  columns: [order_id, customer_email, order_date, amount]
+
+duplicates:
+  subset: [order_id]
+
+range_and_format:
+  percentage_columns: [discount_pct]
+  email_columns: [customer_email]
+  date_columns: [order_date]
+  date_format: "%Y-%m-%d"

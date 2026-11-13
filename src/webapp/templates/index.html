@@ -4,7 +4,7 @@
 {% block content %}
 <section class="hero">
   <h1>Catch data mistakes <span class="accent">before they spread.</span></h1>
-  <p class="lead">Upload a spreadsheet saved as CSV. DataGuard checks it and tells you what is wrong, where it is, and how to fix it.</p>
+  <p class="lead">Upload a spreadsheet (CSV or Excel). DataGuard checks it and tells you what is wrong, where it is, and how to fix it.</p>
 </section>
 
 {% if error %}
@@ -15,15 +15,37 @@
 
 <form id="upload-form" class="card upload-card" method="post" action="{{ url_for('validate') }}" enctype="multipart/form-data">
   <label class="dropzone" id="dropzone" for="file">
-    <input class="visually-hidden" id="file" name="file" type="file" accept=".csv,.tsv,.txt,text/csv" required>
+    <input class="visually-hidden" id="file" name="file" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
     <svg viewBox="0 0 48 48" width="48" height="48" aria-hidden="true">
       <path d="M14 34a9 9 0 0 1-1.6-17.9A12 12 0 0 1 35.6 18 8 8 0 0 1 34 34H14Z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
       <path d="M24 38V22m0 0-5 5m5-5 5 5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
-    <span class="dropzone-title">Drop your CSV file here</span>
-    <span class="dropzone-sub">or <u>browse your computer</u> &middot; up to 5 MB</span>
+    <span class="dropzone-title">Drop your CSV or Excel file here</span>
+    <span class="dropzone-sub">or <u>browse your computer</u> &middot; .csv or .xlsx &middot; up to 5 MB</span>
     <span class="dropzone-file" id="file-name" aria-live="polite"></span>
   </label>
+
+  <fieldset class="options" style="border:none;padding:0;margin:0.75rem 0">
+    <legend class="muted" style="font-size:0.95rem;margin-bottom:0.5rem">Rule mode</legend>
+    <label style="display:block;margin-bottom:0.25rem">
+      <input type="radio" name="rule_mode" value="auto" checked> Auto-detect rules (recommended)
+    </label>
+    <label style="display:block;margin-bottom:0.25rem">
+      <input type="radio" name="rule_mode" value="yaml"> Use rules.yaml
+    </label>
+  </fieldset>
+
+  {% if templates %}
+  <div class="options" style="margin:0.75rem 0">
+    <label for="template" style="font-size:0.95rem" class="muted">Rule template</label>
+    <select id="template" name="template" style="display:block;margin-top:0.25rem;padding:0.4rem 0.6rem;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--fg);width:100%;max-width:20rem">
+      <option value="default" selected>Default (rules.yaml)</option>
+      {% for t in templates %}
+      <option value="{{ t }}">{{ t|replace('_', ' ')|title }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
 
   <details class="options">
     <summary>Optional: use your own required columns instead of the team's settings</summary>

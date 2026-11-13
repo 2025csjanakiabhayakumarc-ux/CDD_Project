@@ -1,0 +1,13 @@
+required_columns:
+  columns: [reg_id, name, email, phone, college, registered_on]
+
+missing_values:
+  columns: [reg_id, name, email, registered_on]
+
+duplicates:
+  subset: [reg_id]
+
+range_and_format:
+  email_columns: [email]
+  date_columns: [registered_on]
+  date_format: "%Y-%m-%d"
