@@ -1,0 +1,12 @@
+required_columns:
+  columns: [sku, item_name, quantity, unit_price, last_restocked]
+
+missing_values:
+  columns: [sku, item_name, quantity, unit_price]
+
+duplicates:
+  subset: [sku]
+
+range_and_format:
+  date_columns: [last_restocked]
+  date_format: "%Y-%m-%d"
