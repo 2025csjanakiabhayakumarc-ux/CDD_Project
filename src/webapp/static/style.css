@@ -1,41 +1,43 @@
-/* DataGuard design tokens. Keep these in sync with the Figma styles (docs/ux/figma-plan.md). */
+/* DataGuard design tokens — Holst teal palette. */
 :root {
-  --bg: #f6f7fb;
-  --surface: #ffffff;
-  --text: #16192c;
-  --muted: #5b6078;
-  --border: #e2e5f0;
-  --primary: #4338ca;
-  --primary-hover: #3730a3;
-  --primary-soft: #eceafd;
-  --on-primary: #ffffff;
+  --bg: #E2F4F0;
+  --surface: #FFFFFF;
+  --text: #04222B;
+  --muted: #10606F;
+  --border: #98D8D0;
+  --primary: #10606F;
+  --primary-hover: #0A3D4A;
+  --primary-soft: #D3EEE9;
+  --on-primary: #E2F4F0;
+  --info: #1D8B94;
+  --info-soft: #D3EEE9;
   --error: #b42318;
   --error-soft: #fdecea;
   --warning: #9a5b00;
   --warning-soft: #fff3dc;
-  --info: #1d4ed8;
-  --info-soft: #e6eefe;
   --good: #15803d;
   --ok: #b45309;
   --poor: #b42318;
   --radius: 14px;
-  --shadow: 0 1px 2px rgba(22, 25, 44, .06), 0 8px 24px rgba(22, 25, 44, .06);
+  --shadow: 0 1px 2px rgba(4,34,43,.08), 0 8px 24px rgba(4,34,43,.08);
   --space-1: 4px; --space-2: 8px; --space-3: 16px; --space-4: 24px; --space-5: 40px;
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 :root[data-theme="dark"] {
-  --bg: #0f1120; --surface: #181b30; --text: #eceefb; --muted: #a2a7c4; --border: #2a2e4a;
-  --primary: #8b86ff; --primary-hover: #a5a1ff; --primary-soft: #25285a; --on-primary: #0f1120;
+  --bg: #04222B; --surface: #0A3D4A; --text: #E2F4F0; --muted: #98D8D0; --border: #10606F;
+  --primary: #4FB8B4; --primary-hover: #98D8D0; --primary-soft: #10606F; --on-primary: #04222B;
+  --info: #4FB8B4; --info-soft: #10606F;
   --error: #ff8a80; --error-soft: #3a1f26; --warning: #ffc266; --warning-soft: #3a2d14;
-  --info: #8fb4ff; --info-soft: #1d2a4d; --good: #4ade80; --ok: #fbbf24; --poor: #ff8a80;
+  --good: #4ade80; --ok: #fbbf24; --poor: #ff8a80;
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0f1120; --surface: #181b30; --text: #eceefb; --muted: #a2a7c4; --border: #2a2e4a;
-    --primary: #8b86ff; --primary-hover: #a5a1ff; --primary-soft: #25285a; --on-primary: #0f1120;
+    --bg: #04222B; --surface: #0A3D4A; --text: #E2F4F0; --muted: #98D8D0; --border: #10606F;
+    --primary: #4FB8B4; --primary-hover: #98D8D0; --primary-soft: #10606F; --on-primary: #04222B;
+    --info: #4FB8B4; --info-soft: #10606F;
     --error: #ff8a80; --error-soft: #3a1f26; --warning: #ffc266; --warning-soft: #3a2d14;
-    --info: #8fb4ff; --info-soft: #1d2a4d; --good: #4ade80; --ok: #fbbf24; --poor: #ff8a80;
+    --good: #4ade80; --ok: #fbbf24; --poor: #ff8a80;
     --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
   }
 }
