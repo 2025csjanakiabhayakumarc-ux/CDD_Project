@@ -7,7 +7,7 @@ import yaml
 
 from src import duplicates
 from src.loader import load_csv
-from src.rules import missing_values, range_and_format, required_columns
+from src.rules import india_formats, missing_values, range_and_format, required_columns
 from src.rules._base import Finding
 
 _DEFAULT_CONFIG = Path(__file__).parent.parent / "rules.yaml"
@@ -39,6 +39,17 @@ def run_all(df: pd.DataFrame, config: dict) -> list[Finding]:
         email_columns=config.get("range_and_format", {}).get("email_columns"),
         date_format=config.get("range_and_format", {}).get("date_format", "%Y-%m-%d"),
     )
+
+    india_cfg = config.get("india_formats", {})
+    if india_cfg:
+        findings += india_formats.check(
+            df,
+            phone_columns=india_cfg.get("phone_columns"),
+            pincode_columns=india_cfg.get("pincode_columns"),
+            pan_columns=india_cfg.get("pan_columns"),
+            gstin_columns=india_cfg.get("gstin_columns"),
+            ifsc_columns=india_cfg.get("ifsc_columns"),
+        )
 
     return findings
 

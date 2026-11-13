@@ -32,6 +32,7 @@ RULES = (
     ("missing_values", ("src.rules.missing_values",), ("check",)),
     ("duplicates", ("src.rules.duplicates", "src.duplicates"), ("check", "find_duplicates")),
     ("range_and_format", ("src.rules.range_and_format",), ("check",)),
+    ("india_formats", ("src.rules.india_formats",), ("check",)),
 )
 
 # These rules still work with no settings (duplicates checks every column).
