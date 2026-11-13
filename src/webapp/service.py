@@ -90,6 +90,8 @@ class Report:
     error: str = ""
     auto_detect: bool = False
     explanations: dict = field(default_factory=dict)
+    fix_summary: str = ""
+    fix_log: list = field(default_factory=list)
 
     @property
     def truncated(self) -> bool:
@@ -132,8 +134,58 @@ def analyze_upload(
         report.error = str(exc)
         return report
 
+    # Compute auto-fix summary
+    try:
+        fix_summary, fix_log = _compute_fix_summary(data)
+        report.fix_summary = fix_summary
+        report.fix_log = fix_log[:10]
+    except Exception:  # noqa: BLE001, S110
+        pass
+
     _finish(report, findings)
     return report
+
+
+def get_cleaned_csv(data: bytes) -> tuple[bytes, str]:
+    """Return (cleaned_csv_bytes, summary_text) for a previously uploaded file."""
+    try:
+        autofix = importlib.import_module("src.autofix")
+        loader = importlib.import_module("src.loader")
+    except ImportError:
+        return data, ""
+
+    folder = Path(tempfile.mkdtemp(prefix="dataguard_fix_"))
+    try:
+        path = folder / "upload.csv"
+        path.write_bytes(data)
+        df = loader.load_csv(str(path))
+        fixed_df, log = autofix.fix(df)
+        csv_bytes = fixed_df.to_csv(index=False).encode("utf-8")
+        cells_fixed = sum(1 for e in log if e["fix"] != "drop duplicate")
+        dups_removed = sum(1 for e in log if e["fix"] == "drop duplicate")
+        summary = f"{cells_fixed} cells fixed, {dups_removed} duplicate rows removed"
+        return csv_bytes, summary
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+def _compute_fix_summary(data: bytes) -> tuple[str, list[dict]]:
+    """Run autofix on data and return (summary_text, change_log)."""
+    autofix = importlib.import_module("src.autofix")
+    loader = importlib.import_module("src.loader")
+
+    folder = Path(tempfile.mkdtemp(prefix="dataguard_fix_"))
+    try:
+        path = folder / "upload.csv"
+        path.write_bytes(data)
+        df = loader.load_csv(str(path))
+        _, log = autofix.fix(df)
+        cells_fixed = sum(1 for e in log if e["fix"] != "drop duplicate")
+        dups_removed = sum(1 for e in log if e["fix"] == "drop duplicate")
+        summary = f"{cells_fixed} cells fixed, {dups_removed} duplicate rows removed"
+        return summary, log
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 # --------------------------------------------------------------------------
