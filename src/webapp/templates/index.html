@@ -25,6 +25,16 @@
     <span class="dropzone-file" id="file-name" aria-live="polite"></span>
   </label>
 
+  <fieldset class="options" style="border:none;padding:0;margin:0.75rem 0">
+    <legend class="muted" style="font-size:0.95rem;margin-bottom:0.5rem">Rule mode</legend>
+    <label style="display:block;margin-bottom:0.25rem">
+      <input type="radio" name="rule_mode" value="auto" checked> Auto-detect rules (recommended)
+    </label>
+    <label style="display:block;margin-bottom:0.25rem">
+      <input type="radio" name="rule_mode" value="yaml"> Use rules.yaml
+    </label>
+  </fieldset>
+
   {% if templates %}
   <div class="options" style="margin:0.75rem 0">
     <label for="template" style="font-size:0.95rem" class="muted">Rule template</label>

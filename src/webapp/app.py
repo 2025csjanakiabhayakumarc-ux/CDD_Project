@@ -51,7 +51,11 @@ def create_app() -> Flask:
                 config_path = str(candidate)
 
         required = [c.strip() for c in request.form.get("required", "").split(",") if c.strip()]
-        report = service.analyze_upload(upload.filename, upload.read(), required, config_path=config_path)
+        auto_detect = request.form.get("rule_mode") == "auto"
+        report = service.analyze_upload(
+            upload.filename, upload.read(), required,
+            config_path=config_path, auto_detect=auto_detect,
+        )
         if report.error:
             return render_template("error.html", message=report.error, filename=report.filename), 422
         return render_template("report.html", report=report)

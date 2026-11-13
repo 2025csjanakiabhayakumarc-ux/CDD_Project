@@ -88,6 +88,8 @@ class Report:
     notes: list = field(default_factory=list)
     engine: str = "demo"
     error: str = ""
+    auto_detect: bool = False
+    explanations: dict = field(default_factory=dict)
 
     @property
     def truncated(self) -> bool:
@@ -110,6 +112,7 @@ def analyze_upload(
     data: bytes,
     required: list[str] | None = None,
     config_path: str | None = None,
+    auto_detect: bool = False,
 ) -> Report:
     """Check an uploaded file and return a Report for the pages to show."""
     required = required or []
@@ -118,7 +121,10 @@ def analyze_upload(
         engine = _load_engine()
         if engine:
             report.engine = "dataguard"
-            findings = _run_engine(engine, filename, data, required, report, config_path=config_path)
+            findings = _run_engine(
+                engine, filename, data, required, report,
+                config_path=config_path, auto_detect=auto_detect,
+            )
         else:
             report.engine = "demo"
             findings = _run_demo(data, required, report)
@@ -189,6 +195,15 @@ def _load_engine():
         "unreadable": getattr(loader, "UnreadableFileError", UnreadableUpload),
         "rules": rules,
     }
+
+
+def _infer_config(df) -> tuple[dict, dict[str, str]]:
+    """Use src.infer to auto-detect rules from the DataFrame."""
+    try:
+        infer_mod = importlib.import_module("src.infer")
+        return infer_mod.infer_config(df)
+    except ImportError:
+        return {}, {}
 
 
 def _config_path() -> Path:
@@ -319,7 +334,7 @@ def _call_rule(fn, name, df, settings, required):
         return None, f"The {name} check could not run: {exc}. Update service.py to match its inputs."
 
 
-def _run_engine(engine, filename, data, required, report, config_path=None):
+def _run_engine(engine, filename, data, required, report, config_path=None, auto_detect=False):
     folder = Path(tempfile.mkdtemp(prefix="dataguard_"))
     try:
         path = folder / ("upload" + (Path(filename).suffix or ".csv"))
@@ -332,12 +347,18 @@ def _run_engine(engine, filename, data, required, report, config_path=None):
         report.rows = len(df)
         report.columns = [str(c) for c in df.columns]
 
-        if config_path:
+        if auto_detect:
+            config, explanations = _infer_config(df)
+            report.auto_detect = True
+            report.explanations = explanations
+        elif config_path:
             config, config_note = _load_config_from(config_path)
+            if config_note:
+                report.notes.append(config_note)
         else:
             config, config_note = _load_config()
-        if config_note:
-            report.notes.append(config_note)
+            if config_note:
+                report.notes.append(config_note)
 
         findings: list[UiFinding] = []
         for name, fn in engine["rules"]:

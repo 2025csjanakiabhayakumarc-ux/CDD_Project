@@ -6,6 +6,7 @@ import pandas as pd
 import yaml
 
 from src import duplicates
+from src.infer import infer_config
 from src.loader import load_csv
 from src.rules import india_formats, missing_values, range_and_format, required_columns
 from src.rules._base import Finding
@@ -59,3 +60,14 @@ def validate_file(path: str | Path, config_path: str | Path = _DEFAULT_CONFIG) -
     df = load_csv(path)
     config = load_config(config_path)
     return run_all(df, config)
+
+
+def validate_file_auto(path: str | Path) -> tuple[list[Finding], dict, dict[str, str]]:
+    """Load a CSV, infer config from its contents, run all rules.
+
+    Returns (findings, inferred_config, explanations).
+    """
+    df = load_csv(path)
+    config, explanations = infer_config(df)
+    findings = run_all(df, config)
+    return findings, config, explanations
