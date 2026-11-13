@@ -92,6 +92,35 @@
   </section>
   {% endif %}
 
+  {% if report.fix_summary %}
+  <section class="card" style="margin-bottom:1rem">
+    <h2>Auto-fix available</h2>
+    <p class="muted">{{ report.fix_summary }}</p>
+    {% if report.fix_log %}
+    <details>
+      <summary>Show first changes</summary>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Row</th><th>Column</th><th>Before</th><th>After</th><th>Fix</th></tr></thead>
+          <tbody>
+            {% for c in report.fix_log %}
+            <tr>
+              <td>{{ c.row + 2 }}</td>
+              <td>{{ c.column or '—' }}</td>
+              <td><code>{{ c.before }}</code></td>
+              <td><code>{{ c.after }}</code></td>
+              <td>{{ c.fix }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% endif %}
+    <a class="btn" href="{{ url_for('download_cleaned') }}" style="margin-top:0.5rem">Download cleaned CSV</a>
+  </section>
+  {% endif %}
+
   <div class="actions">
     <a class="btn btn-primary" href="{{ url_for('index') }}">Check another file</a>
     {% if report.total %}
