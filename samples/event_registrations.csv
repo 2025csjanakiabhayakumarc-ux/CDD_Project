@@ -1,0 +1,16 @@
+reg_id,name,email,phone,college,registered_on
+R001,Aarav Mehta,aarav@mail.com,9123456780,IIT Bombay,2024-06-01
+R002,Bhavna Patel,bhavna@mail.com,9123456781,NIT Trichy,2024-06-02
+R003,Chirag Shah,chirag-bad-email,9123456782,BITS Pilani,2024-06-03
+R004,,diya@mail.com,9123456783,VIT Vellore,2024-06-04
+R005,Esha Kapoor,esha@mail.com,9123456784,IIIT Hyderabad,2024-13-05
+R006,Farhan Ali,farhan@mail.com,9123456785,DTU Delhi,2024-06-06
+R007,Gauri Nair,gauri@mail.com,9123456786,COEP Pune,2024-06-07
+R008,Harsh Jain,harsh@mail.com,9123456787,NSIT Delhi,2024-06-08
+R009,Isha Reddy,isha@mail.com,,SRM Chennai,2024-06-09
+R010,Jai Sharma,jai@mail.com,9123456789,MIT Manipal,2024-06-10
+R011,Kriti Gupta,kriti@mail.com,9123456790,VJTI Mumbai,2024-06-11
+R001,Aarav Mehta,aarav@mail.com,9123456780,IIT Bombay,2024-06-01
+R013,Lavanya Iyer,lavanya@mail.com,9123456792,PSG Coimbatore,2024-06-13
+R014,Manish Roy,manish@mail.com,9123456793,Jadavpur Kolkata,2024-06-14
+R015,Neeta Verma,neeta@mail.com,9123456794,MNNIT Allahabad,2024-06-15

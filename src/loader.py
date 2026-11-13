@@ -24,6 +24,17 @@ class UnreadableFileError(Exception):
     """Raised when a CSV file cannot be decoded or parsed."""
 
 
+def load_file(path: str | Path) -> pd.DataFrame:
+    """Load a CSV or Excel file into a DataFrame.
+
+    Dispatches to Excel loading for .xlsx files, CSV loading for everything else.
+    """
+    path = Path(path)
+    if path.suffix.lower() == ".xlsx":
+        return _load_excel(path)
+    return load_csv(path)
+
+
 def load_csv(path: str | Path) -> pd.DataFrame:
     """Load a CSV file into a DataFrame with auto-detected encoding and delimiter.
 
@@ -61,6 +72,21 @@ def load_csv(path: str | Path) -> pd.DataFrame:
             f"Could not parse '{path}' as CSV (encoding={encoding}, delimiter={delimiter!r}): {exc}"
         ) from exc
 
+    return df
+
+
+def _load_excel(path: Path) -> pd.DataFrame:
+    """Load the first sheet of an Excel file."""
+    if not path.exists():
+        raise UnreadableFileError(f"File not found: {path}")
+    try:
+        df = pd.read_excel(path, sheet_name=0, engine="openpyxl")
+    except Exception as exc:
+        raise UnreadableFileError(
+            f"Could not parse '{path}' as Excel: {exc}"
+        ) from exc
+    if df.empty and len(df.columns) == 0:
+        raise UnreadableFileError(f"File is empty: {path}")
     return df
 
 

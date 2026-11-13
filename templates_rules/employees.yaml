@@ -1,0 +1,13 @@
+required_columns:
+  columns: [emp_id, name, email, phone, join_date, salary]
+
+missing_values:
+  columns: [emp_id, name, email, join_date]
+
+duplicates:
+  subset: [emp_id]
+
+range_and_format:
+  email_columns: [email]
+  date_columns: [join_date]
+  date_format: "%Y-%m-%d"
