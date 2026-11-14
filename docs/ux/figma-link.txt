@@ -1,0 +1,7 @@
+DataGuard UX Design
+
+Figma File:
+https://www.figma.com/design/DHr33uVe7dKSdVOO7d7pO0/Dataguard-UX?node-id=5-7&t=Wom0HDq8RrIWIOa1-1
+
+Interactive Prototype:
+https://www.figma.com/proto/DHr33uVe7dKSdVOO7d7pO0/Dataguard-UX?node-id=13-35&p=f&t=w0qiErWxgCHfmQQK-1&scaling=min-zoom&content-scaling=fixed&page-id=5%3A7&starting-point-node-id=13%3A14
