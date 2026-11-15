@@ -2,4 +2,6 @@
 target-version = "py311"
 
 [tool.ruff.lint]
+# DTZ007: we parse dates to validate/normalize their format, not to do timezone
+# arithmetic, so naive datetimes from strptime() are intentional here.
 ignore = ["DTZ007"]
