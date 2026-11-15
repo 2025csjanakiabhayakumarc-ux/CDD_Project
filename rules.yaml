@@ -13,13 +13,15 @@ range_and_format:
   date_columns: [dob]
   date_format: "%Y-%m-%d"
 
-# India-specific format validators (uncomment and set your column names)
-# india_formats:
-#   phone_columns: [phone]
-#   pincode_columns: [pincode]
-#   pan_columns: [pan]
-#   gstin_columns: [gstin]
-#   ifsc_columns: [ifsc]
+# India-specific format validators. "phone" matches the column in
+# samples/employees.csv, which is used to demo this rule; the other
+# formats are commented out until a sample file has matching columns.
+india_formats:
+  phone_columns: [phone]
+  # pincode_columns: [pincode]
+  # pan_columns: [pan]
+  # gstin_columns: [gstin]
+  # ifsc_columns: [ifsc]
 
 validation:
   max_errors: 50
