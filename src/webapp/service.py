@@ -34,6 +34,7 @@ RULES = (
     ("range_and_format", ("src.rules.range_and_format",), ("check",)),
     ("india_formats", ("src.rules.india_formats",), ("check",)),
 )
+RULE_NAMES = tuple(name for name, _modules, _functions in RULES)
 
 # These rules still work with no settings (duplicates checks every column).
 RUNS_WITHOUT_SETTINGS = {"duplicates"}
@@ -92,18 +93,16 @@ class Report:
     explanations: dict = field(default_factory=dict)
     fix_summary: str = ""
     fix_log: list = field(default_factory=list)
+    problem_rows: int = 0
+    rule_counts: dict = field(default_factory=dict)
 
     @property
     def truncated(self) -> bool:
         return self.total > len(self.findings)
 
     @property
-    def band(self) -> str:
-        if self.score >= 90:
-            return "good"
-        if self.score >= 70:
-            return "ok"
-        return "poor"
+    def valid_rows(self) -> int:
+        return max(0, self.rows - self.problem_rows)
 
 
 # --------------------------------------------------------------------------
@@ -205,6 +204,8 @@ def _finish(report: Report, findings: list[UiFinding]) -> None:
     whole_file = sum(1 for f in findings if not f.row)
     penalty = round(100 * len(rows_hit) / max(report.rows, 1)) + 10 * whole_file
     report.score = max(0, min(100, 100 - penalty))
+    report.problem_rows = len(rows_hit)
+    report.rule_counts = {name: sum(1 for f in findings if f.rule == name) for name in report.rules_run}
 
     report.counts = counts
     report.total = len(findings)
@@ -397,7 +398,9 @@ def _run_engine(engine, filename, data, required, report, config_path=None, auto
         try:
             df = load_fn(str(path))
         except engine["unreadable"] as exc:
-            raise UnreadableUpload(str(exc) or "We could not read this file as a table.") from exc
+            # Messages can include the temporary path; show the user's file name instead.
+            message = str(exc).replace(f"'{path}'", filename).replace(str(path), filename)
+            raise UnreadableUpload(message or "We could not read this file as a table.") from exc
         report.rows = len(df)
         report.columns = [str(c) for c in df.columns]
 

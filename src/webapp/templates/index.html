@@ -2,64 +2,71 @@
 {% block title %}DataGuard · Check your data{% endblock %}
 
 {% block content %}
-<section class="hero">
-  <h1>Catch data mistakes <span class="accent">before they spread.</span></h1>
-  <p class="lead">Upload a spreadsheet (CSV or Excel). DataGuard checks it and tells you what is wrong, where it is, and how to fix it.</p>
-</section>
+<div class="page">
+  <section id="upload-view">
+    <h1>CSV Data Validation Made Simple</h1>
+    <p class="lead">Upload a CSV file to check data quality and find errors before you use your data.</p>
 
-{% if error %}
-<div class="banner banner-error" role="alert">
-  <strong>Could not check that file.</strong> {{ error }}
+    {% if error %}
+    <div class="banner banner-error" role="alert">
+      <svg class="banner-icon" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="currentColor"/><path d="M10 5.5v5.5M10 14v.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
+      <div><strong>Could not check that file</strong><p>{{ error }}</p></div>
+    </div>
+    {% endif %}
+
+    <form id="upload-form" method="post" action="{{ url_for('validate') }}" enctype="multipart/form-data">
+      <label class="dropzone" id="dropzone" for="file">
+        <input class="visually-hidden" id="file" name="file" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+        <span class="tile" aria-hidden="true">
+          <svg class="tile-up" viewBox="0 0 24 24" width="20" height="20"><path d="M12 19V5m0 0-6 6m6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg class="tile-ok" viewBox="0 0 24 24" width="22" height="22"><path d="m5 12.5 4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="dropzone-title" id="drop-title">Drag and drop your CSV file here</span>
+        <span class="dropzone-sub" id="drop-sub">Supported file formats: .csv or .xlsx &middot; up to 5 MB</span>
+      </label>
+
+      <label class="btn btn-secondary btn-wide" for="file" id="browse-btn">Browse Files</label>
+
+      <div class="card checks">
+        <p class="eyebrow">What DataGuard will check</p>
+        <label class="field-label" for="template">Rule template</label>
+        <select id="template" name="template">
+          {% for s in rule_sets %}
+          <option value="{{ s.value }}"{% if loop.first %} selected{% endif %}>{{ s.label }}</option>
+          {% endfor %}
+        </select>
+        <div class="tags" id="check-columns"></div>
+        <p class="small muted" id="check-summary"></p>
+        <details class="options">
+          <summary>Optional: use your own required columns</summary>
+          <label class="field-label" for="required">Column names, separated by commas</label>
+          <input id="required" name="required" type="text" placeholder="student_id, name, attendance_percent" autocomplete="off">
+        </details>
+      </div>
+
+      <button class="btn btn-primary btn-wide" type="submit" id="submit-btn">Validate CSV</button>
+      <p class="helper" id="submit-help">Choose a file to continue</p>
+      <label class="link-btn" for="file" id="change-file" hidden>Choose a different file</label>
+    </form>
+
+    <div class="card note">
+      <strong>Your file is not stored</strong>
+      <p>DataGuard reads the file, reports what it finds and discards it. Nothing is kept on a server.</p>
+    </div>
+  </section>
+
+  <section id="checking-view" hidden aria-live="polite">
+    <h1>Checking your file</h1>
+    <p class="lead">This usually takes a few seconds. You can watch each rule run below.</p>
+    <div class="card progress-card">
+      <div class="progress-head"><span class="mono" id="check-file"></span><span class="progress-pct" id="check-pct">0%</span></div>
+      <div class="progress" role="progressbar" aria-label="Checking progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="check-bar"></span></div>
+      <p class="small muted" id="check-count"></p>
+    </div>
+    <ul class="card rule-list" id="check-rules"></ul>
+    <button class="link-btn" type="button" id="cancel-check">Cancel</button>
+  </section>
 </div>
-{% endif %}
 
-<form id="upload-form" class="card upload-card" method="post" action="{{ url_for('validate') }}" enctype="multipart/form-data">
-  <label class="dropzone" id="dropzone" for="file">
-    <input class="visually-hidden" id="file" name="file" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
-    <svg viewBox="0 0 48 48" width="48" height="48" aria-hidden="true">
-      <path d="M14 34a9 9 0 0 1-1.6-17.9A12 12 0 0 1 35.6 18 8 8 0 0 1 34 34H14Z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
-      <path d="M24 38V22m0 0-5 5m5-5 5 5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-    <span class="dropzone-title">Drop your CSV or Excel file here</span>
-    <span class="dropzone-sub">or <u>browse your computer</u> &middot; .csv or .xlsx &middot; up to 5 MB</span>
-    <span class="dropzone-file" id="file-name" aria-live="polite"></span>
-  </label>
-
-  <fieldset class="options" style="border:none;padding:0;margin:0.75rem 0">
-    <legend class="muted" style="font-size:0.95rem;margin-bottom:0.5rem">Rule mode</legend>
-    <label style="display:block;margin-bottom:0.25rem">
-      <input type="radio" name="rule_mode" value="auto" checked> Auto-detect rules (recommended)
-    </label>
-    <label style="display:block;margin-bottom:0.25rem">
-      <input type="radio" name="rule_mode" value="yaml"> Use rules.yaml
-    </label>
-  </fieldset>
-
-  {% if templates %}
-  <div class="options" style="margin:0.75rem 0">
-    <label for="template" style="font-size:0.95rem" class="muted">Rule template</label>
-    <select id="template" name="template" style="display:block;margin-top:0.25rem;padding:0.4rem 0.6rem;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--fg);width:100%;max-width:20rem">
-      <option value="default" selected>Default (rules.yaml)</option>
-      {% for t in templates %}
-      <option value="{{ t }}">{{ t|replace('_', ' ')|title }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  {% endif %}
-
-  <details class="options">
-    <summary>Optional: use your own required columns instead of the team's settings</summary>
-    <label for="required">Column names, separated by commas</label>
-    <input id="required" name="required" type="text" placeholder="student_id, name, attendance_percent" autocomplete="off">
-  </details>
-
-  <button class="btn btn-primary btn-wide" type="submit" id="submit-btn">Check my file</button>
-  <p class="privacy">Your file is checked and then thrown away. We do not keep a copy.</p>
-</form>
-
-<section class="steps" aria-label="How it works">
-  <div class="step"><span class="step-num">1</span><h2>Upload</h2><p>Choose a CSV file from your computer.</p></div>
-  <div class="step"><span class="step-num">2</span><h2>Check</h2><p>Every rule runs on your file in a moment.</p></div>
-  <div class="step"><span class="step-num">3</span><h2>Fix</h2><p>See each problem with a plain tip to fix it.</p></div>
-</section>
+<script type="application/json" id="rule-sets">{{ rule_sets|tojson }}</script>
 {% endblock %}

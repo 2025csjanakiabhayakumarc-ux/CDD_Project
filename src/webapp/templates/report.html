@@ -1,11 +1,45 @@
 {% extends "base.html" %}
-{% block title %}Report · {{ report.filename }} · DataGuard{% endblock %}
+{% block title %}{% if report.total == 0 %}All clear{% else %}Report{% endif %} · {{ report.filename }} · DataGuard{% endblock %}
+
+{% macro rule_status() %}
+<ul class="card rule-list">
+  {% for name in all_rules %}
+  {% if name in report.rules_run %}
+    {% set n = report.rule_counts.get(name, 0) %}
+    {% set errors = report.findings|selectattr('rule', 'eq', name)|selectattr('severity', 'eq', 'error')|list %}
+    <li class="{{ 'is-pass' if n == 0 else ('is-fail' if errors else 'is-warn') }}"><span class="dot" aria-hidden="true"></span><span class="mono">{{ name }}</span>
+      <span class="status">{% if n == 0 %}passed{% else %}{{ n }} problem{{ '' if n == 1 else 's' }}{% endif %}</span></li>
+  {% else %}
+    <li class="is-off"><span class="dot" aria-hidden="true"></span><span class="mono">{{ name }}</span><span class="status">skipped</span></li>
+  {% endif %}
+  {% endfor %}
+</ul>
+{% endmacro %}
 
 {% block content %}
-<div id="dataguard-report" data-total="{{ report.total }}">
-  <section class="report-head card">
-    <div class="score score-{{ report.band }}" role="img" aria-label="Health score {{ report.score }} out of 100">
-      <svg viewBox="0 0 120 120" width="120" height="120" aria-hidden="true">
+<div class="page" id="dataguard-report" data-total="{{ report.total }}">
+
+{% if report.total == 0 %}
+  {# ---------- 07 · All clear ---------- #}
+  <section class="all-clear">
+    <span class="big-check" aria-hidden="true"><svg viewBox="0 0 48 48" width="48" height="48"><path d="m11 25 9 9 17-19" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    <h1>No problems found</h1>
+    <p class="lead">All {{ report.rows }} record{{ '' if report.rows == 1 else 's' }} in <span class="mono">{{ report.filename }}</span> passed every rule in {{ rule_source }}. This file is ready to use.</p>
+  </section>
+  {{ rule_status() }}
+  {% for note in report.notes %}<div class="banner banner-warning" role="status"><div><p>{{ note }}</p></div></div>{% endfor %}
+  <div class="stack">
+    <a class="btn btn-secondary btn-wide" href="{{ url_for('index') }}">Upload Another File</a>
+  </div>
+
+{% else %}
+  {# ---------- 04 · Validation Summary ---------- #}
+  <section class="view" id="view-summary" aria-labelledby="summary-title">
+    <h1 id="summary-title">Validation Summary</h1>
+    <p class="mono filename">{{ report.filename }}</p>
+
+    <div class="score" role="img" aria-label="Health score {{ report.score }} out of 100">
+      <svg viewBox="0 0 120 120" width="136" height="136" aria-hidden="true">
         <circle class="ring-bg" cx="60" cy="60" r="52"/>
         <circle class="ring-fg" cx="60" cy="60" r="52" transform="rotate(-90 60 60)"
                 stroke-dasharray="{{ (report.score * 3.2673)|round(1) }} 326.73"/>
@@ -13,136 +47,93 @@
       <div class="score-text"><strong>{{ report.score }}</strong><span>out of 100</span></div>
     </div>
 
-    <div class="report-meta">
-      <p class="eyebrow">Report for</p>
-      <h1 class="file-title">{{ report.filename }}</h1>
-      <p class="muted">{{ report.rows }} row{{ '' if report.rows == 1 else 's' }} &middot; {{ report.columns|length }} column{{ '' if report.columns|length == 1 else 's' }}</p>
-      <p class="verdict">
-        {% if report.total == 0 %}Great news. We found no problems.
-        {% elif report.band == 'good' %}Nearly there. A few things to tidy up.
-        {% elif report.band == 'ok' %}Some problems need your attention.
-        {% else %}This file needs work before you use it.{% endif %}
-      </p>
-      <details class="options small">
-        <summary>How is the score worked out?</summary>
-        <p class="muted">We start at 100. We take off the percent of rows that have a problem, and 10 more for each problem that affects the whole file, such as a missing column.</p>
-      </details>
+    <div class="banner banner-success" role="status">
+      <svg class="banner-icon" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="currentColor"/><path d="m5.8 10.3 2.8 2.8 5.6-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div><strong>Validation complete</strong>
+        <p>{% if report.counts.error %}Your file has been validated. Some records need attention.{% else %}No errors. Check the warnings before you use the data.{% endif %}</p></div>
     </div>
 
     <div class="stats">
-      <div class="stat stat-error"><strong>{{ report.counts.error }}</strong><span>Errors</span></div>
-      <div class="stat stat-warning"><strong>{{ report.counts.warning }}</strong><span>Warnings</span></div>
-      <div class="stat stat-info"><strong>{{ report.counts.info }}</strong><span>Notes</span></div>
+      <div class="stat"><strong>{{ report.rows }}</strong><span>Total records</span></div>
+      <div class="stat stat-good"><strong>{{ report.valid_rows }}</strong><span>Valid records</span></div>
+      <div class="stat stat-error"><strong>{{ report.counts.error }}</strong><span>Errors found</span></div>
+      <div class="stat stat-warning"><strong>{{ report.counts.warning }}</strong><span>Warnings found</span></div>
+    </div>
+
+    <details class="options small">
+      <summary>How is the score worked out?</summary>
+      <p class="muted">We start at 100. We take off the percent of rows that have a problem, and 10 more for each problem that affects the whole file, such as a missing column.</p>
+    </details>
+
+    {% if report.engine == 'demo' %}
+    <div class="banner banner-info" role="status"><div><strong>Demo mode.</strong><p>The team's checking code was not found, so a simple built-in checker was used.</p></div></div>
+    {% endif %}
+    {% for note in report.notes %}<div class="banner banner-warning" role="status"><div><p>{{ note }}</p></div></div>{% endfor %}
+
+    <p class="eyebrow">Rules checked &middot; {{ rule_source }}</p>
+    {{ rule_status() }}
+
+    {% if report.auto_detect and report.explanations %}
+    <details class="card options">
+      <summary>Detected rules (auto-detect)</summary>
+      <ul class="plain">
+        {% for col, reason in report.explanations.items() %}<li><span class="mono">{{ col }}</span> &middot; {{ reason }}</li>{% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+
+    {% if report.fix_log %}
+    <div class="card">
+      <strong>Auto-fix available</strong>
+      <p class="small muted">{{ report.fix_summary }}</p>
+      <a class="btn btn-secondary" href="{{ url_for('download_cleaned') }}">Download cleaned CSV</a>
+    </div>
+    {% endif %}
+
+    <div class="stack">
+      <a class="btn btn-primary btn-wide" href="#findings" data-view="findings">View Detailed Report</a>
+      <a class="btn btn-secondary btn-wide" href="{{ url_for('index') }}">Upload Another File</a>
     </div>
   </section>
 
-  {% if report.engine == 'demo' %}
-  <div class="banner banner-info" role="status"><strong>Demo mode.</strong> The team's checking code was not found, so a simple built-in checker was used.</div>
-  {% endif %}
-  {% for note in report.notes %}
-  <div class="banner banner-warning" role="status">{{ note }}</div>
-  {% endfor %}
+  {# ---------- 05 / 06 · Validation Findings ---------- #}
+  <section class="view" id="view-findings" aria-labelledby="findings-title">
+    <h1 id="findings-title">Validation Findings</h1>
+    <p class="mono filename">{{ report.filename }}</p>
+    <p class="lead" id="filter-status" aria-live="polite">Review the affected records and use the suggested fixes to update your CSV.</p>
 
-  {% if report.auto_detect and report.explanations %}
-  <details class="card" style="margin-bottom:1rem">
-    <summary><strong>Detected rules</strong> (auto-detect)</summary>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Column</th><th>Detected as</th></tr></thead>
-        <tbody>
-          {% for col, reason in report.explanations.items() %}
-          <tr><td>{{ col }}</td><td>{{ reason }}</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </details>
-  {% endif %}
-
-  <p class="rules-run"><span class="muted">Rules checked:</span>
-    {% for r in report.rules_run %}<span class="pill">{{ r }}</span>{% endfor %}
-  </p>
-
-  {% if report.total == 0 %}
-  <section class="card empty">
-    <svg viewBox="0 0 64 64" width="64" height="64" aria-hidden="true"><circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" stroke-width="4"/><path d="m20 33 8 8 16-17" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    <h2>All clear</h2>
-    <p class="muted">Every rule passed. This file is ready to use.</p>
-  </section>
-  {% else %}
-  <section class="card">
-    <div class="toolbar">
-      <h2>What to fix</h2>
-      <div class="filters" role="group" aria-label="Filter problems">
-        <button type="button" class="chip-btn is-active" data-filter="all">All ({{ report.total }})</button>
-        <button type="button" class="chip-btn" data-filter="error">Errors ({{ report.counts.error }})</button>
-        <button type="button" class="chip-btn" data-filter="warning">Warnings ({{ report.counts.warning }})</button>
-        {% if report.counts.info %}<button type="button" class="chip-btn" data-filter="info">Notes ({{ report.counts.info }})</button>{% endif %}
-      </div>
+    <div class="filters" role="group" aria-label="Filter problems">
+      <button type="button" class="chip-btn is-active" data-filter="all" aria-pressed="true">All <span>{{ report.total }}</span></button>
+      <button type="button" class="chip-btn" data-filter="error" aria-pressed="false">Errors <span>{{ report.counts.error }}</span></button>
+      <button type="button" class="chip-btn" data-filter="warning" aria-pressed="false">Warnings <span>{{ report.counts.warning }}</span></button>
+      {% if report.counts.info %}<button type="button" class="chip-btn" data-filter="info" aria-pressed="false">Notes <span>{{ report.counts.info }}</span></button>{% endif %}
     </div>
 
     {% if report.truncated %}
     <p class="muted small">Showing the first {{ report.findings|length }} of {{ report.total }} problems.</p>
     {% endif %}
 
-    <div class="table-wrap">
-      <table id="findings">
-        <thead>
-          <tr><th scope="col">Level</th><th scope="col">Rule</th><th scope="col">Where</th><th scope="col">Problem</th><th scope="col">How to fix it</th></tr>
-        </thead>
-        <tbody>
-          {% for f in report.findings %}
-          <tr data-severity="{{ f.severity }}">
-            <td><span class="chip chip-{{ f.severity }}"><span aria-hidden="true">{{ '✕' if f.severity == 'error' else ('▲' if f.severity == 'warning' else 'i') }}</span> {{ f.severity|capitalize }}</span></td>
-            <td><span class="pill">{{ f.rule }}</span></td>
-            <td class="where">
-              {% if f.row %}Row <strong>{{ f.row }}</strong>{% else %}Whole file{% endif %}{% if f.column %}<br><span class="muted">{{ f.column }}</span>{% endif %}
-            </td>
-            <td>{{ f.message }}</td>
-            <td class="hint">{{ f.hint }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div id="finding-list">
+      {% for f in report.findings %}
+      <article class="card finding" data-severity="{{ f.severity }}">
+        <div class="finding-head">
+          <span class="badge badge-{{ f.severity }} f-level"><span class="badge-icon" aria-hidden="true">{{ '!' if f.severity == 'error' else ('▲' if f.severity == 'warning' else 'i') }}</span>{{ f.severity|capitalize }}</span>
+          <span class="rule-tag mono f-rule">{{ f.rule }}</span>
+        </div>
+        <p class="where mono f-where">{% if f.row %}row {{ f.row }}{% else %}whole file{% endif %}{% if f.column %} &nbsp;&middot;&nbsp; {{ f.column }}{% endif %}</p>
+        <p class="message f-msg">{{ f.message }}</p>
+        <p class="hint"><span class="visually-hidden">How to fix it: </span><span class="f-hint">{{ f.hint }}</span></p>
+      </article>
+      {% endfor %}
+    </div>
+
+    <div class="actions">
+      <a class="btn btn-primary" href="#summary" data-view="summary">Back to Summary</a>
+      <button class="btn btn-secondary" type="button" id="download-csv">Download problems (CSV)</button>
+      <button class="btn btn-secondary" type="button" id="print-report">Print report</button>
     </div>
   </section>
-  {% endif %}
+{% endif %}
 
-  {% if report.fix_summary %}
-  <section class="card" style="margin-bottom:1rem">
-    <h2>Auto-fix available</h2>
-    <p class="muted">{{ report.fix_summary }}</p>
-    {% if report.fix_log %}
-    <details>
-      <summary>Show first changes</summary>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Row</th><th>Column</th><th>Before</th><th>After</th><th>Fix</th></tr></thead>
-          <tbody>
-            {% for c in report.fix_log %}
-            <tr>
-              <td>{{ c.row + 2 }}</td>
-              <td>{{ c.column or '—' }}</td>
-              <td><code>{{ c.before }}</code></td>
-              <td><code>{{ c.after }}</code></td>
-              <td>{{ c.fix }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </details>
-    {% endif %}
-    <a class="btn" href="{{ url_for('download_cleaned') }}" style="margin-top:0.5rem">Download cleaned CSV</a>
-  </section>
-  {% endif %}
-
-  <div class="actions">
-    <a class="btn btn-primary" href="{{ url_for('index') }}">Check another file</a>
-    {% if report.total %}
-    <button class="btn" type="button" id="download-csv">Download problems (CSV)</button>
-    {% endif %}
-    <button class="btn" type="button" id="print-report">Print report</button>
-  </div>
 </div>
 {% endblock %}
