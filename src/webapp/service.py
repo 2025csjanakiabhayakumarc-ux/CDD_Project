@@ -160,7 +160,9 @@ def get_cleaned_csv(data: bytes) -> tuple[bytes, str]:
         path.write_bytes(data)
         df = loader.load_csv(str(path))
         fixed_df, log = autofix.fix(df)
-        csv_bytes = fixed_df.to_csv(index=False).encode("utf-8")
+        # convert_dtypes() keeps whole numbers as integers, so a column with a blank
+        # cell (read as float) is written as 55000, not 55000.0.
+        csv_bytes = fixed_df.convert_dtypes().to_csv(index=False).encode("utf-8")
         cells_fixed = sum(1 for e in log if e["fix"] != "drop duplicate")
         dups_removed = sum(1 for e in log if e["fix"] == "drop duplicate")
         summary = f"{cells_fixed} cells fixed, {dups_removed} duplicate rows removed"
