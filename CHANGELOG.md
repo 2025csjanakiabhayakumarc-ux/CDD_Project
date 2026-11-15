@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1 (2026-11-15)
+
+- `employees` rule template now runs the India phone number check
+- Cleaned CSV download keeps whole numbers as integers (`55000`, not `55000.0`) when a column has blank cells
+
 ## 1.0.0 (2026-11-15)
 
 Initial release of the DataGuard CSV validation engine.

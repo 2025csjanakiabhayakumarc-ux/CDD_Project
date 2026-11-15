@@ -153,3 +153,11 @@ def test_a_missing_column_does_not_crash_the_report(monkeypatch):
     report = service.analyze_upload("t.csv", b"name,age\nAnu,20\nAnu,20\n")
     assert report.error == ""
     assert any(f.rule == "required_columns" for f in report.findings)
+
+
+def test_cleaned_csv_keeps_whole_numbers_as_integers():
+    """A blank salary makes pandas read the column as float; the download must not add '.0'."""
+    pytest.importorskip("src.autofix")
+    data = b"emp_id,salary\nE1,55000\nE2,\n"
+    cleaned, _ = service.get_cleaned_csv(data)
+    assert cleaned.decode("utf-8").splitlines() == ["emp_id,salary", "E1,55000", "E2,"]

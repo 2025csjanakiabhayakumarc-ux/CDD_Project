@@ -11,3 +11,6 @@ range_and_format:
   email_columns: [email]
   date_columns: [join_date]
   date_format: "%Y-%m-%d"
+
+india_formats:
+  phone_columns: [phone]
