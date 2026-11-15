@@ -1,7 +1,7 @@
 
 import pandas as pd
 
-from src.duplicates import find_duplicates
+from src.duplicates import check, find_duplicates
 
 
 def test_no_duplicates():
@@ -38,3 +38,12 @@ def test_empty_dataframe():
     result = find_duplicates(df)
 
     assert len(result) == 0
+
+
+def test_check_reports_duplicates_as_warning():
+    df = pd.read_csv("sample_data/bad.csv")
+
+    findings = check(df)
+
+    assert findings
+    assert all(f.severity == "warning" for f in findings)
