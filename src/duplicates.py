@@ -39,6 +39,7 @@ def check(df, subset=None, **_) -> list[Finding]:
                 column=None,
                 message=f"Duplicate row at index {row_idx} (checked: {col_desc})",
                 hint=f"Remove or merge the duplicate row at index {row_idx}.",
+                severity="warning",
             )
         )
     return findings
