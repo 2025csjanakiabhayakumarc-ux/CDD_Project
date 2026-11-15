@@ -5,3 +5,11 @@ https://www.figma.com/design/DHr33uVe7dKSdVOO7d7pO0/Dataguard-UX?node-id=5-7&t=W
 
 Interactive Prototype:
 https://www.figma.com/proto/DHr33uVe7dKSdVOO7d7pO0/Dataguard-UX?node-id=13-35&p=f&t=w0qiErWxgCHfmQQK-1&scaling=min-zoom&content-scaling=fixed&page-id=5%3A7&starting-point-node-id=13%3A14
+
+Mobile Design & Component Library:
+https://www.figma.com/design/YrTIYGqxecotEg6DkOytIu
+
+Pages:
+- 01 Mobile Flow — 8 screens, interactive prototype, starting point: "01 · Upload — empty"
+- 02 Design System — 16 components, 27 variables
+- 03 Research & Desktop
