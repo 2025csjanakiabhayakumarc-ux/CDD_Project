@@ -1,9 +1,14 @@
 """Tests for India-specific format validators."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 
+from src.engine import load_config
 from src.rules.india_formats import check
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # --- Phone ---
 
@@ -143,3 +148,17 @@ def test_empty_dataframe():
 def test_nonexistent_column_skipped():
     df = pd.DataFrame({"x": [1]})
     assert check(df, phone_columns=["phone"]) == []
+
+
+# --- Wired into rules.yaml ---
+
+def test_rules_yaml_india_formats_fires_on_sample_employees():
+    """rules.yaml's india_formats block is live and catches the bad phone
+    number planted in samples/employees.csv."""
+    config = load_config(_REPO_ROOT / "rules.yaml")
+    india_cfg = config.get("india_formats")
+    assert india_cfg, "india_formats should be an active block in rules.yaml"
+    df = pd.read_csv(_REPO_ROOT / "samples" / "employees.csv")
+    findings = check(df, phone_columns=india_cfg.get("phone_columns"))
+    assert findings
+    assert any(f.column == "phone" for f in findings)
