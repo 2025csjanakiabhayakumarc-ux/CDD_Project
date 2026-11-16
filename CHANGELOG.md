@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.0 (2026-11-16)
+
+### New features
+- **ML anomaly detection** — IsolationForest with MAD-based secondary gate flags statistical outliers in numeric columns (`anomalies` rule)
+- **Near-duplicate detection** — rapidfuzz fuzzy string matching finds rows that are almost identical across key columns (`near_duplicates` rule)
+- **Smart cleaned CSV** — KNN imputation (k=3) fills blank numeric cells; mode imputation fills blank categorical cells; protected columns (IDs, emails, names) are never imputed
+- **Change log** — every auto-fix is recorded with row, column, before/after values, method, and an `estimated` flag for imputed values; downloadable as `changes.csv`
+- **AI summary** — Gemini-powered plain-English summary of validation findings with top-fix suggestions; falls back to rule-based summary when no API key is set
+- **AI rule generation** — describe your data in plain English and get a `rules.yaml` configuration back; works offline with graceful fallback
+- **Laptop UI redesign** — 1440×900 sidebar layout with design tokens (Plus Jakarta Sans, JetBrains Mono), ML pill tags on findings, AI summary card, dark mode
+
+### Quality
+- 165 pytest tests; ruff clean; CI on Python 3.11–3.13
+
 ## 1.0.1 (2026-11-15)
 
 - `employees` rule template now runs the India phone number check
