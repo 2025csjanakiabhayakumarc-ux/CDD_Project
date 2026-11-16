@@ -36,6 +36,28 @@
     </div>
   </section>
 
+  {% if ai_summary is defined and ai_summary %}
+  <section class="card" style="margin-bottom:1rem">
+    <h2>AI Summary {% if ai_summary.ai %}<span class="chip chip-info" style="font-size:0.75em">AI-generated</span>{% endif %}</h2>
+    <p>{{ ai_summary.summary }}</p>
+    {% if ai_summary.top_fixes %}
+    <p><strong>Top things to fix first:</strong></p>
+    <ol>
+      {% for fix in ai_summary.top_fixes %}
+      <li>{{ fix }}</li>
+      {% endfor %}
+    </ol>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if ai_rules_result is defined and ai_rules_result and ai_rules_result.yaml_text %}
+  <details class="card" style="margin-bottom:1rem">
+    <summary><strong>AI-generated rules</strong>{% if ai_rules_result.error %} <span class="chip chip-warning" style="font-size:0.75em">{{ ai_rules_result.error }}</span>{% endif %}</summary>
+    <pre><code>{{ ai_rules_result.yaml_text }}</code></pre>
+  </details>
+  {% endif %}
+
   {% if report.engine == 'demo' %}
   <div class="banner banner-info" role="status"><strong>Demo mode.</strong> The team's checking code was not found, so a simple built-in checker was used.</div>
   {% endif %}

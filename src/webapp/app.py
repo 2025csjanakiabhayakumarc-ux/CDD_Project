@@ -10,9 +10,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
 from flask import Flask, Response, render_template, request, session
 
 from . import service
+
+load_dotenv()
 
 ALLOWED_SUFFIXES = (".csv", ".tsv", ".txt", ".xlsx")
 _TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates_rules"
@@ -54,16 +57,33 @@ def create_app() -> Flask:
         file_data = upload.read()
         required = [c.strip() for c in request.form.get("required", "").split(",") if c.strip()]
         auto_detect = request.form.get("rule_mode") == "auto"
+
+        ai_rules_text = request.form.get("ai_rules", "").strip()
+        ai_config = None
+        ai_rules_result = None
+        if ai_rules_text:
+            from src.ai.rule_writer import generate_rules
+            ai_rules_result = generate_rules(ai_rules_text)
+            if ai_rules_result["config"]:
+                ai_config = ai_rules_result["config"]
+
         report = service.analyze_upload(
             upload.filename, file_data, required,
             config_path=config_path, auto_detect=auto_detect,
+            ai_config=ai_config,
         )
         if report.error:
             return render_template("error.html", message=report.error, filename=report.filename), 422
 
+        from src.ai.summary import summarise
+        ai_summary = summarise(report)
+
         session["last_upload"] = file_data
         session["last_filename"] = upload.filename
-        return render_template("report.html", report=report)
+        return render_template(
+            "report.html", report=report,
+            ai_summary=ai_summary, ai_rules_result=ai_rules_result,
+        )
 
     @app.get("/download-cleaned")
     def download_cleaned():

@@ -117,6 +117,7 @@ def analyze_upload(
     required: list[str] | None = None,
     config_path: str | None = None,
     auto_detect: bool = False,
+    ai_config: dict | None = None,
 ) -> Report:
     """Check an uploaded file and return a Report for the pages to show."""
     required = required or []
@@ -128,6 +129,7 @@ def analyze_upload(
             findings = _run_engine(
                 engine, filename, data, required, report,
                 config_path=config_path, auto_detect=auto_detect,
+                ai_config=ai_config,
             )
         else:
             report.engine = "demo"
@@ -413,7 +415,7 @@ def _call_rule(fn, name, df, settings, required):
         return None, f"The {name} check could not run: {exc}. Update service.py to match its inputs."
 
 
-def _run_engine(engine, filename, data, required, report, config_path=None, auto_detect=False):
+def _run_engine(engine, filename, data, required, report, config_path=None, auto_detect=False, ai_config=None):
     folder = Path(tempfile.mkdtemp(prefix="dataguard_"))
     try:
         path = folder / ("upload" + (Path(filename).suffix or ".csv"))
@@ -426,7 +428,9 @@ def _run_engine(engine, filename, data, required, report, config_path=None, auto
         report.rows = len(df)
         report.columns = [str(c) for c in df.columns]
 
-        if auto_detect:
+        if ai_config:
+            config = ai_config
+        elif auto_detect:
             config, explanations = _infer_config(df)
             report.auto_detect = True
             report.explanations = explanations
