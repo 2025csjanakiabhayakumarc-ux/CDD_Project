@@ -53,6 +53,13 @@
     <input id="required" name="required" type="text" placeholder="student_id, name, attendance_percent" autocomplete="off">
   </details>
 
+  <details class="options">
+    <summary>Describe your rules in plain English (AI)</summary>
+    <label for="ai_rules">Type rules like "phone must be an Indian mobile, email required, attendance 0 to 100"</label>
+    <textarea id="ai_rules" name="ai_rules" rows="3" style="width:100%;max-width:30rem;padding:0.4rem 0.6rem;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:0.95rem;margin-top:0.25rem" placeholder="phone must be an Indian mobile, email required, salary must be positive"></textarea>
+    <p class="muted small">The AI generates YAML rules from your description. If unavailable, the selected template is used instead.</p>
+  </details>
+
   <button class="btn btn-primary btn-wide" type="submit" id="submit-btn">Check my file</button>
   <p class="privacy">Your file is checked and then thrown away. We do not keep a copy.</p>
 </form>
