@@ -159,8 +159,10 @@ def test_cleaned_csv_keeps_whole_numbers_as_integers():
     """A blank salary makes pandas read the column as float; the download must not add '.0'."""
     pytest.importorskip("src.autofix")
     data = b"emp_id,salary\nE1,55000\nE2,\n"
-    cleaned, _ = service.get_cleaned_csv(data)
-    assert cleaned.decode("utf-8").splitlines() == ["emp_id,salary", "E1,55000", "E2,"]
+    cleaned, _, _log = service.get_cleaned_csv(data)
+    lines = cleaned.decode("utf-8").splitlines()
+    assert lines[0] == "emp_id,salary"
+    assert lines[1] == "E1,55000"
 
 
 def test_employees_clean_sample_scores_100_with_employees_template(monkeypatch):

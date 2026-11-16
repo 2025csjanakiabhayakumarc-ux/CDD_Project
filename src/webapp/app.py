@@ -71,12 +71,27 @@ def create_app() -> Flask:
         filename = session.get("last_filename", "data.csv")
         if not file_data:
             return render_template("index.html", error="No file to clean. Please upload a file first."), 400
-        cleaned_csv, _summary = service.get_cleaned_csv(file_data)
+        cleaned_csv, _summary, _log = service.get_cleaned_csv(file_data)
         stem = filename.rsplit(".", 1)[0] if "." in filename else filename
         return Response(
             cleaned_csv,
             mimetype="text/csv",
             headers={"Content-Disposition": f"attachment; filename={stem}_cleaned.csv"},
+        )
+
+    @app.get("/download-changes")
+    def download_changes():
+        file_data = session.get("last_upload")
+        filename = session.get("last_filename", "data.csv")
+        if not file_data:
+            return render_template("index.html", error="No file to clean. Please upload a file first."), 400
+        _csv, _summary, log = service.get_cleaned_csv(file_data)
+        changes_csv = service.get_changes_csv(log)
+        stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+        return Response(
+            changes_csv,
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={stem}_changes.csv"},
         )
 
     @app.get("/health")

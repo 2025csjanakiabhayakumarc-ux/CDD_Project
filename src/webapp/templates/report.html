@@ -110,30 +110,30 @@
 
   {% if report.fix_summary %}
   <section class="card" style="margin-bottom:1rem">
-    <h2>Auto-fix available</h2>
+    <h2>What we changed</h2>
     <p class="muted">{{ report.fix_summary }}</p>
     {% if report.fix_log %}
-    <details>
-      <summary>Show first changes</summary>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Row</th><th>Column</th><th>Before</th><th>After</th><th>Fix</th></tr></thead>
-          <tbody>
-            {% for c in report.fix_log %}
-            <tr>
-              <td>{{ c.row + 2 }}</td>
-              <td>{{ c.column or '—' }}</td>
-              <td><code>{{ c.before }}</code></td>
-              <td><code>{{ c.after }}</code></td>
-              <td>{{ c.fix }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </details>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Row</th><th>Column</th><th>Before</th><th>After</th><th>Method</th></tr></thead>
+        <tbody>
+          {% for c in report.fix_log %}
+          <tr{% if c.get('estimated') %} class="estimated"{% endif %}>
+            <td>{{ c.row + 2 }}</td>
+            <td>{{ c.column or '—' }}</td>
+            <td><code>{{ c.before }}</code></td>
+            <td><code>{{ c.after }}{% if c.get('estimated') %} ⚠{% endif %}</code></td>
+            <td>{{ c.fix }}{% if c.get('estimated') %} <span class="chip chip-warning" style="font-size:0.75em">estimated</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% endif %}
-    <a class="btn" href="{{ url_for('download_cleaned') }}" style="margin-top:0.5rem">Download cleaned CSV</a>
+    <div style="display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap">
+      <a class="btn" href="{{ url_for('download_cleaned') }}">Download cleaned CSV</a>
+      <a class="btn" href="{{ url_for('download_changes') }}">Download changes (CSV)</a>
+    </div>
   </section>
   {% endif %}
 
