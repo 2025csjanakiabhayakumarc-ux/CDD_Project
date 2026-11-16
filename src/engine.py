@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from src import duplicates
+from src import anomalies, duplicates, fuzzy_duplicates
 from src.infer import infer_config
 from src.loader import load_csv
 from src.rules import india_formats, missing_values, range_and_format, required_columns
@@ -50,6 +50,22 @@ def run_all(df: pd.DataFrame, config: dict) -> list[Finding]:
             pan_columns=india_cfg.get("pan_columns"),
             gstin_columns=india_cfg.get("gstin_columns"),
             ifsc_columns=india_cfg.get("ifsc_columns"),
+        )
+
+    anomalies_cfg = config.get("anomalies", {})
+    if anomalies_cfg:
+        findings += anomalies.check(
+            df,
+            numeric_columns=anomalies_cfg.get("numeric_columns"),
+            contamination=anomalies_cfg.get("contamination", 0.05),
+        )
+
+    near_dup_cfg = config.get("near_duplicates", {})
+    if near_dup_cfg:
+        findings += fuzzy_duplicates.check(
+            df,
+            key_columns=near_dup_cfg.get("key_columns"),
+            threshold=near_dup_cfg.get("threshold", 90),
         )
 
     return findings

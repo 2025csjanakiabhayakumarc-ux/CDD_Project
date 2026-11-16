@@ -14,3 +14,11 @@ range_and_format:
 
 india_formats:
   phone_columns: [phone]
+
+anomalies:
+  numeric_columns: [salary]
+  contamination: 0.05
+
+near_duplicates:
+  key_columns: [name, email]
+  threshold: 90
