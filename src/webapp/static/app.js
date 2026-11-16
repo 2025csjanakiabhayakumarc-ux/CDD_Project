@@ -26,6 +26,14 @@
     india_formats: "Indian mobile numbers and other Indian formats you configure"
   };
 
+  var RULE_NAME = {
+    required_columns: "Required columns",
+    missing_values: "Missing values",
+    duplicates: "Duplicate rows",
+    range_and_format: "Ranges and formats",
+    india_formats: "Indian formats"
+  };
+
   var form = $("upload-form");
   if (form) {
     var input = $("file"), zone = $("dropzone"), submit = $("submit-btn"), help = $("submit-help");
@@ -38,22 +46,18 @@
       if (!set) return;
       var list = $("check-rules"), tags = $("check-columns"), summary = $("check-summary");
       list.innerHTML = "";
-      set.rules.forEach(function (r, i) {
+      set.rules.forEach(function (r) {
         var li = document.createElement("li");
-        li.innerHTML = '<span class="n"></span><span><span class="r"></span><span class="d"></span></span>';
-        li.querySelector(".n").textContent = String(i + 1);
-        li.querySelector(".r").textContent = r;
+        li.innerHTML = '<strong class="r"></strong><span class="d"></span>';
+        li.title = r;
+        li.querySelector(".r").textContent = RULE_NAME[r] || r;
         li.querySelector(".d").textContent = RULE_TEXT[r] || "";
         list.appendChild(li);
       });
       summary.textContent = set.value === "auto"
         ? "DataGuard looks at your column names and picks the rules that fit."
         : set.rules.length + " rule" + (set.rules.length === 1 ? "" : "s") + " from " + set.source + ".";
-      tags.innerHTML = "";
-      set.columns.forEach(function (c) {
-        var t = document.createElement("span");
-        t.className = "tag"; t.textContent = c; tags.appendChild(t);
-      });
+      tags.textContent = set.columns.length ? "Expects the columns " + set.columns.join(", ") + "." : "";
     };
     if (select) { select.addEventListener("change", showRules); showRules(); }
 
@@ -93,6 +97,8 @@
         var head = document.createElement("thead"), body = document.createElement("tbody");
         lines.forEach(function (line, i) {
           var tr = document.createElement("tr");
+          var num = document.createElement("th");
+          num.className = "rownum"; num.textContent = String(i + 1); tr.appendChild(num);
           splitLine(line).forEach(function (v) {
             var cell = document.createElement(i === 0 ? "th" : "td");
             cell.textContent = v; tr.appendChild(cell);
@@ -109,7 +115,7 @@
       if (!file) { setReady(false); zone.classList.remove("has-file"); $("file-peek").hidden = true; return; }
       zone.classList.add("has-file");
       $("drop-title").textContent = file.name;
-      $("drop-sub").innerHTML = 'Selected. <span class="link-text">Choose a different file</span>';
+      $("drop-sub").innerHTML = '<span class="link-text">Choose a different file</span>';
       peek(file);
       setReady(true);
     };
@@ -213,6 +219,20 @@
     if (el.tagName === "TD") el.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
   });
 
+  // Row map: jump to a row in the sheet
+  $$("[data-goto-row]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var tr = document.querySelector('.grid tr[data-row="' + btn.getAttribute("data-goto-row") + '"]');
+      if (!tr) return;
+      var marked = tr.querySelector("[data-fid]") || (tr.hasAttribute("data-fid") ? tr : null);
+      if (marked) { var fid = marked.getAttribute("data-fid"); selectFinding(fid, true); focusTarget(fid); return; }
+      $$(".grid .is-focus").forEach(function (el) { el.classList.remove("is-focus"); });
+      void tr.offsetWidth;
+      tr.classList.add("is-focus");
+      tr.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    });
+  });
+
   // Export the problems list as CSV
   var exportBtn = $("download-csv");
   if (exportBtn) {
@@ -221,7 +241,7 @@
       var rows = [["severity", "rule", "row", "column", "problem", "how_to_fix"]];
       findings.forEach(function (f) {
         rows.push([
-          f.getAttribute("data-severity"), f.querySelector(".f-rule").textContent.trim(),
+          f.getAttribute("data-severity"), f.getAttribute("data-rule"),
           f.getAttribute("data-row"), f.getAttribute("data-col"),
           f.querySelector(".f-msg").textContent.trim(), f.querySelector(".f-hint").textContent.trim()
         ]);

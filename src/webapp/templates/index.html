@@ -5,40 +5,43 @@
 {% block content %}
 <div class="upload-layout">
   <section class="upload-main" aria-labelledby="upload-title">
-    <p class="eyebrow">Data quality check</p>
-    <h1 id="upload-title">Find every bad cell before the file goes anywhere.</h1>
-    <p class="lead">Upload a spreadsheet. DataGuard checks every row against your rules, shows each problem in place, and gives you back a cleaned copy with a record of each change.</p>
+    <h1 id="upload-title">Check a spreadsheet before anyone relies on it.</h1>
+    <p class="lead">DataGuard reads every row against your rules, marks each bad cell where it sits, and hands back a cleaned copy with a record of what changed.</p>
 
     {% if error %}
     <div class="banner banner-error" role="alert">
-      <svg class="banner-icon" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="currentColor"/><path d="M10 5.5v5.5M10 14v.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
-      <div><strong>Could not check that file</strong><p>{{ error }}</p></div>
+      <strong>Could not check that file.</strong> {{ error }}
     </div>
     {% endif %}
 
-    <form id="upload-form" class="upload-card" method="post" action="{{ url_for('validate') }}" enctype="multipart/form-data">
-      <label class="dropzone" id="dropzone" for="file">
-        <input class="visually-hidden" id="file" name="file" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
-        <span class="drop-art" aria-hidden="true">
-          <svg viewBox="0 0 64 48" width="64" height="48">
-            <rect x="1" y="1" width="62" height="46" rx="6" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/>
-            <path d="M1 13h62M1 25h62M1 37h62M17 1v46M33 1v46M49 1v46" stroke="var(--line-strong)" stroke-width="1.2"/>
-            <rect x="33.6" y="25.6" width="14.8" height="10.8" fill="var(--err-soft)"/>
-            <path d="M33.6 25.6h14.8v10.8H33.6z" fill="none" stroke="var(--err)" stroke-width="1.5"/>
-          </svg>
-        </span>
-        <span class="dropzone-title" id="drop-title">Drop a CSV or Excel file here</span>
-        <span class="dropzone-sub" id="drop-sub">or <span class="link-text">browse your computer</span> &middot; .csv or .xlsx up to 5 MB</span>
-      </label>
+    <form id="upload-form" method="post" action="{{ url_for('validate') }}" enctype="multipart/form-data">
+      <div class="sheet upload-sheet">
+        <label class="dropzone" id="dropzone" for="file">
+          <input class="visually-hidden" id="file" name="file" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+          <span class="blank-sheet">
+            <span class="bs-head bs-corner" aria-hidden="true"></span>
+            {% for letter in ['A', 'B', 'C', 'D', 'E', 'F'] %}<span class="bs-head" aria-hidden="true">{{ letter }}</span>{% endfor %}
+            {% for n in range(1, 8) %}
+            <span class="bs-num" aria-hidden="true">{{ n }}</span>
+            {% for _ in range(6) %}<span class="bs-cell" aria-hidden="true"></span>{% endfor %}
+            {% endfor %}
+            <span class="drop-copy">
+              <span class="dropzone-title" id="drop-title">Drop a CSV or Excel file on this sheet</span>
+              <span class="dropzone-sub" id="drop-sub">or <span class="link-text">choose one from your computer</span>. Up to 5 MB.</span>
+              <span class="fill-handle" aria-hidden="true"></span>
+            </span>
+          </span>
+        </label>
 
-      <div class="file-peek" id="file-peek" hidden>
-        <div class="file-peek-head"><span class="mono" id="peek-name"></span><span class="muted small" id="peek-size"></span></div>
-        <div class="table-scroll"><table class="peek-table" id="peek-table"></table></div>
+        <div class="file-peek" id="file-peek" hidden>
+          <div class="table-scroll"><table class="grid peek-table" id="peek-table"></table></div>
+          <p class="peek-foot"><span id="peek-name" hidden></span><span id="peek-size"></span>, first rows shown.</p>
+        </div>
       </div>
 
       <div class="control-row">
         <div class="field">
-          <label class="field-label" for="template">Rule template</label>
+          <label class="field-label" for="template">Rules to check against</label>
           <select id="template" name="template">
             {% for s in rule_sets %}
             <option value="{{ s.value }}"{% if loop.first %} selected{% endif %}>{{ s.label }}</option>
@@ -59,37 +62,29 @@
       </details>
     </form>
 
-    <div class="samples">
-      <span class="samples-label">No file handy? Try a sample:</span>
-      <a class="sample" href="{{ url_for('try_sample', name='employees') }}">
-        <span class="sample-dot sample-dot-bad" aria-hidden="true"></span>
-        <span><strong>employees.csv</strong><span class="muted"> · 15 rows with problems</span></span>
-      </a>
-      <a class="sample" href="{{ url_for('try_sample', name='employees_clean') }}">
-        <span class="sample-dot sample-dot-ok" aria-hidden="true"></span>
-        <span><strong>employees_clean.csv</strong><span class="muted"> · fixed copy</span></span>
-      </a>
-    </div>
+    <p class="samples">No file to hand? Open
+      <a href="{{ url_for('try_sample', name='employees') }}">employees.csv</a> (15 rows, 5 problems) or
+      <a href="{{ url_for('try_sample', name='employees_clean') }}">employees_clean.csv</a> (the fixed copy).</p>
   </section>
 
   <aside class="upload-side">
-    <section class="panel" aria-labelledby="checks-title">
-      <h2 id="checks-title" class="panel-title">What this template checks</h2>
-      <p class="small muted" id="check-summary"></p>
-      <ol class="rule-steps" id="check-rules"></ol>
-      <div class="tags" id="check-columns" aria-label="Columns this template expects"></div>
+    <section aria-labelledby="checks-title">
+      <h2 id="checks-title" class="side-title">What these rules check</h2>
+      <p class="muted" id="check-summary"></p>
+      <ul class="rule-list" id="check-rules"></ul>
+      <p class="expects" id="check-columns"></p>
     </section>
 
-    <section class="panel panel-quiet" aria-labelledby="why-title">
-      <h2 id="why-title" class="panel-title">Why not paste it into a chatbot?</h2>
-      <ul class="why">
-        <li><span class="why-icon" aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18"><rect x="4" y="9" width="12" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></span>
-          <div><strong>Personal data stays here.</strong> Names, phone numbers and dates of birth are checked by this app. Nothing is sent to an AI service.</div></li>
-        <li><span class="why-icon" aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18"><path d="M4 10a6 6 0 0 1 10.2-4.3M16 10a6 6 0 0 1-10.2 4.3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14.5 2.5v3.4h-3.4M5.5 17.5v-3.4h3.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-          <div><strong>Same file, same answer.</strong> Rules live in a YAML file, so every run checks the same things in the same way.</div></li>
-        <li><span class="why-icon" aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18"><path d="M5 3.5h7l3 3v10H5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M7.5 10h5M7.5 13h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
-          <div><strong>Every row, every change on record.</strong> All rows are checked, and the cleaned file comes with a list of exactly what was changed.</div></li>
-      </ul>
+    <section aria-labelledby="why-title">
+      <h2 id="why-title" class="side-title">Why not paste it into a chatbot?</h2>
+      <dl class="why">
+        <dt>Personal data stays here</dt>
+        <dd>Names, phone numbers and dates of birth are checked by this app. Nothing is sent to an AI service.</dd>
+        <dt>Same file, same answer</dt>
+        <dd>The rules live in a YAML file, so every run checks the same things the same way.</dd>
+        <dt>Every row, every change on record</dt>
+        <dd>All rows are checked, and the cleaned file comes with a list of exactly what was changed.</dd>
+      </dl>
     </section>
   </aside>
 </div>
