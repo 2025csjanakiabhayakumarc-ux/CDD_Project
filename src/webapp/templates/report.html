@@ -1,139 +1,202 @@
 {% extends "base.html" %}
 {% block title %}{% if report.total == 0 %}All clear{% else %}Report{% endif %} · {{ report.filename }} · DataGuard{% endblock %}
+{% block body_class %}page-report{% endblock %}
+{% block crumbs %}<a href="{{ url_for('index') }}">Upload</a><span class="crumb-sep" aria-hidden="true">/</span><span aria-current="page">Report</span>{% endblock %}
 
-{% macro rule_status() %}
-<ul class="card rule-list">
-  {% for name in all_rules %}
-  {% if name in report.rules_run %}
-    {% set n = report.rule_counts.get(name, 0) %}
-    {% set errors = report.findings|selectattr('rule', 'eq', name)|selectattr('severity', 'eq', 'error')|list %}
-    <li class="{{ 'is-pass' if n == 0 else ('is-fail' if errors else 'is-warn') }}"><span class="dot" aria-hidden="true"></span><span class="mono">{{ name }}</span>
-      <span class="status">{% if n == 0 %}passed{% else %}{{ n }} problem{{ '' if n == 1 else 's' }}{% endif %}</span></li>
-  {% else %}
-    <li class="is-off"><span class="dot" aria-hidden="true"></span><span class="mono">{{ name }}</span><span class="status">skipped</span></li>
-  {% endif %}
-  {% endfor %}
-</ul>
-{% endmacro %}
+{% set errors = report.counts.error %}
+{% set warnings = report.counts.warning %}
+{% set g = report.grid %}
 
 {% block content %}
-<div class="page" id="dataguard-report" data-total="{{ report.total }}">
+<div class="report" id="dataguard-report" data-total="{{ report.total }}">
 
-{% if report.total == 0 %}
-  {# ---------- 07 · All clear ---------- #}
-  <section class="all-clear">
-    <span class="big-check" aria-hidden="true"><svg viewBox="0 0 48 48" width="48" height="48"><path d="m11 25 9 9 17-19" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-    <h1>No problems found</h1>
-    <p class="lead">All {{ report.rows }} record{{ '' if report.rows == 1 else 's' }} in <span class="mono">{{ report.filename }}</span> passed every rule in {{ rule_source }}. This file is ready to use.</p>
+  {# ---------------- Header ---------------- #}
+  <header class="report-head">
+    <div class="report-id">
+      <p class="eyebrow">Validation Summary</p>
+      <h1 class="mono file-title">{{ report.filename }}</h1>
+      <p class="meta">{{ report.rows }} rows &middot; {{ report.columns|length }} columns &middot; {{ rule_label or rule_source }}{% if report.engine == 'demo' %} &middot; demo checker{% endif %}</p>
+    </div>
+    <div class="report-actions">
+      <a class="btn btn-ghost" href="{{ url_for('index') }}">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>New file</a>
+      {% if report.total %}
+      <button class="btn btn-secondary" type="button" id="download-csv">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3 2.5h6.5L13 6v7.5H3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5.5 9h5M5.5 11.5h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Export problems</button>
+      <a class="btn btn-primary" href="{{ url_for('download_cleaned') }}">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 2.5v8m0 0-3-3m3 3 3-3M3 13.5h10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Download cleaned CSV</a>
+      {% endif %}
+    </div>
+  </header>
+
+  {# ---------------- Summary band ---------------- #}
+  <section class="summary" aria-label="Summary">
+    <div class="tile tile-score">
+      <div class="ring" role="img" aria-label="Health score {{ report.score }} out of 100">
+        <svg viewBox="0 0 120 120" width="104" height="104" aria-hidden="true">
+          <circle class="ring-bg" cx="60" cy="60" r="50"/>
+          <circle class="ring-fg {% if report.total == 0 %}is-perfect{% endif %}" cx="60" cy="60" r="50" transform="rotate(-90 60 60)"
+                  stroke-dasharray="{{ (report.score * 3.1416)|round(1) }} 314.16"/>
+        </svg>
+        <div class="ring-text"><strong>{{ report.score }}</strong><span>/ 100</span></div>
+      </div>
+      <div class="score-copy">
+        <span class="tile-label">Health score</span>
+        <strong class="verdict">{% if report.total == 0 %}Ready to use{% elif errors %}Fix {{ errors }} error{{ '' if errors == 1 else 's' }} before use{% else %}Usable. Check the warning{{ '' if warnings == 1 else 's' }}{% endif %}</strong>
+        <details class="how">
+          <summary>How is this worked out?</summary>
+          <p>Start at 100. Take off the percent of rows with a problem, and 10 for each problem that affects the whole file, such as a missing column.</p>
+        </details>
+      </div>
+    </div>
+    <div class="tile tile-stat {% if errors %}is-err{% endif %}"><span class="tile-label">Errors</span><strong>{{ errors }}</strong><span class="tile-sub">{% if errors %}must be fixed{% else %}none found{% endif %}</span></div>
+    <div class="tile tile-stat {% if warnings %}is-warn{% endif %}"><span class="tile-label">Warnings</span><strong>{{ warnings }}</strong><span class="tile-sub">{% if warnings %}worth a look{% else %}none found{% endif %}</span></div>
+    <div class="tile tile-stat"><span class="tile-label">Clean rows</span><strong>{{ report.valid_rows }}<small> / {{ report.rows }}</small></strong>
+      <span class="meter" aria-hidden="true"><span style="width: {{ (100 * report.valid_rows / (report.rows or 1))|round|int }}%"></span></span></div>
   </section>
-  {{ rule_status() }}
+
+  <ul class="rule-strip" aria-label="Rules checked">
+    {% for name in all_rules %}
+      {% if name in report.rules_run %}
+        {% set n = report.rule_counts.get(name, 0) %}
+        {% set rule_errors = report.findings|selectattr('rule', 'eq', name)|selectattr('severity', 'eq', 'error')|list %}
+        <li class="rule-chip {{ 'is-pass' if n == 0 else ('is-fail' if rule_errors else 'is-warn') }}">
+          <span class="rule-icon" aria-hidden="true">{% if n == 0 %}<svg viewBox="0 0 12 12" width="11" height="11"><path d="m2.5 6.3 2.3 2.3 4.7-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>{% else %}{{ n }}{% endif %}</span>
+          <span class="mono">{{ name }}</span>
+          <span class="visually-hidden">{% if n == 0 %}passed{% else %}{{ n }} problem{{ '' if n == 1 else 's' }}{% endif %}</span>
+        </li>
+      {% else %}
+        <li class="rule-chip is-off" title="Skipped: this template has no settings for it"><span class="rule-icon" aria-hidden="true">&ndash;</span><span class="mono">{{ name }}</span><span class="visually-hidden">skipped</span></li>
+      {% endif %}
+    {% endfor %}
+  </ul>
+
+  {% if report.total == 0 %}
+  <div class="all-clear" role="status">
+    <span class="big-check" aria-hidden="true"><svg viewBox="0 0 48 48" width="30" height="30"><path d="m12 25 8 8 16-18" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    <div><strong>All clear. No problems found.</strong>
+      <p>All {{ report.rows }} row{{ '' if report.rows == 1 else 's' }} passed every rule in {{ rule_source }}. This file is ready to use.</p></div>
+  </div>
+  {% endif %}
+
   {% for note in report.notes %}<div class="banner banner-warning" role="status"><div><p>{{ note }}</p></div></div>{% endfor %}
-  <div class="stack">
-    <a class="btn btn-secondary btn-wide" href="{{ url_for('index') }}">Upload Another File</a>
+
+  {# ---------------- Workspace: grid + problems ---------------- #}
+  <div class="workspace {% if not g %}no-grid{% endif %} {% if report.total == 0 %}is-clear{% endif %}">
+    {% if g %}
+    <section class="card xray" aria-labelledby="xray-title">
+      <div class="xray-head">
+        <div>
+          <h2 id="xray-title" class="card-title">Data X-ray</h2>
+          <p class="small muted">{% if report.total %}Every cell is checked. Click a marked cell to see the problem.{% else %}Every cell checked. Nothing to mark.{% endif %}</p>
+        </div>
+        {% if g.fixes or g.removed %}
+        <div class="segmented" role="group" aria-label="Which version to show">
+          <button type="button" class="seg is-on" data-version="original" aria-pressed="true">Original</button>
+          <button type="button" class="seg" data-version="cleaned" aria-pressed="false">After auto-fix</button>
+        </div>
+        {% endif %}
+      </div>
+      {% if report.total or g.fixes or g.removed %}
+      <ul class="legend" aria-label="Legend">
+        {% if errors %}<li><span class="key key-err"></span>Error</li>{% endif %}
+        {% if warnings %}<li><span class="key key-warn"></span>Warning</li>{% endif %}
+        {% if g.fixes %}<li class="when-cleaned"><span class="key key-fix"></span>Changed by auto-fix</li>{% endif %}
+        {% if g.removed %}<li class="when-cleaned"><span class="key key-gone"></span>Removed by auto-fix</li>{% endif %}
+      </ul>
+      {% endif %}
+      <div class="grid-scroll" tabindex="0" aria-label="Your data, {{ g.shown }} rows">
+        <table class="grid" id="xray-grid">
+          <thead>
+            <tr>
+              <th class="rownum" scope="col"><span class="visually-hidden">Row</span>#</th>
+              {% for c in g.columns %}
+              <th scope="col">
+                <span class="col-name mono">{{ c.name }}</span>
+                <span class="health {{ 'is-bad' if c.bad else '' }}" title="{{ c.health }}% of cells in this column are fine"><span style="width: {{ c.health }}%"></span></span>
+                <span class="col-stat">{% if c.bad %}{{ c.bad }} issue{{ '' if c.bad == 1 else 's' }}{% else %}OK{% endif %}</span>
+              </th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in g.rows %}
+            <tr data-row="{{ r.num }}" class="{% if r.sev %}row-{{ r.sev }}{% endif %}{% if r.removed %} row-removed{% endif %}"{% if r.fid is defined %} data-fid="{{ r.fid }}"{% endif %}>
+              <th class="rownum" scope="row">{{ r.num }}{% if r.sev %}<span class="row-flag" aria-hidden="true"></span>{% endif %}</th>
+              {% for c in r.cells %}
+              <td class="{% if c.sev %}cell-{{ c.sev }}{% endif %}{% if c.after is defined %} has-fix{% endif %}{% if c.v == '' %} is-blank{% endif %}"{% if c.fid is defined %} data-fid="{{ c.fid }}" tabindex="0"{% endif %}>
+                <span class="v">{{ c.v if c.v != '' else 'empty' }}</span>{% if c.after is defined %}<span class="after">{{ c.after }}</span>{% endif %}
+              </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if report.rows > g.shown %}<p class="small muted grid-foot">Showing the first {{ g.shown }} of {{ report.rows }} rows. The problems list covers every row.</p>{% endif %}
+    </section>
+    {% endif %}
+
+    {% if report.total %}
+    <section class="card problems" aria-labelledby="problems-title">
+      <div class="problems-head">
+        <h2 id="problems-title" class="card-title">Problems <span class="count">{{ report.total }}</span></h2>
+        <div class="filters" role="group" aria-label="Filter problems">
+          <button type="button" class="chip-btn is-active" data-filter="all" aria-pressed="true">All <span>{{ report.total }}</span></button>
+          {% if errors %}<button type="button" class="chip-btn" data-filter="error" aria-pressed="false">Errors <span>{{ errors }}</span></button>{% endif %}
+          {% if warnings %}<button type="button" class="chip-btn" data-filter="warning" aria-pressed="false">Warnings <span>{{ warnings }}</span></button>{% endif %}
+          {% if report.counts.info %}<button type="button" class="chip-btn" data-filter="info" aria-pressed="false">Notes <span>{{ report.counts.info }}</span></button>{% endif %}
+        </div>
+      </div>
+      {% if report.truncated %}<p class="muted small">Showing the first {{ report.findings|length }} of {{ report.total }} problems.</p>{% endif %}
+      <p class="visually-hidden" id="filter-status" aria-live="polite"></p>
+      <ol class="finding-list" id="finding-list">
+        {% for f in report.findings %}
+        <li class="finding" data-severity="{{ f.severity }}" data-fid="{{ loop.index0 }}" data-row="{{ f.row }}" data-col="{{ f.column }}">
+          <button type="button" class="finding-hit" aria-label="Show {{ f.severity }} at {% if f.row %}row {{ f.row }}{% else %}whole file{% endif %} in the data">
+            <span class="finding-top">
+              <span class="badge badge-{{ f.severity }} f-level">{{ f.severity|capitalize }}</span>
+              <span class="where mono f-where">{% if f.row %}Row {{ f.row }}{% else %}Whole file{% endif %}{% if f.column %} &middot; {{ f.column }}{% endif %}</span>
+              <span class="rule-tag mono f-rule">{{ f.rule }}</span>
+            </span>
+            <span class="message f-msg">{{ f.message }}</span>
+            <span class="hint"><span class="visually-hidden">How to fix it: </span><span class="f-hint">{{ f.hint }}</span></span>
+          </button>
+        </li>
+        {% endfor %}
+      </ol>
+    </section>
+    {% endif %}
   </div>
 
-{% else %}
-  {# ---------- 04 · Validation Summary ---------- #}
-  <section class="view" id="view-summary" aria-labelledby="summary-title">
-    <h1 id="summary-title">Validation Summary</h1>
-    <p class="mono filename">{{ report.filename }}</p>
+  {% if report.auto_detect and report.explanations %}
+  <details class="card disclosure">
+    <summary>Rules picked from your columns (auto-detect)</summary>
+    <ul class="plain">
+      {% for col, reason in report.explanations.items() %}<li><span class="mono">{{ col }}</span> &middot; {{ reason }}</li>{% endfor %}
+    </ul>
+  </details>
+  {% endif %}
 
-    <div class="score" role="img" aria-label="Health score {{ report.score }} out of 100">
-      <svg viewBox="0 0 120 120" width="136" height="136" aria-hidden="true">
-        <circle class="ring-bg" cx="60" cy="60" r="52"/>
-        <circle class="ring-fg" cx="60" cy="60" r="52" transform="rotate(-90 60 60)"
-                stroke-dasharray="{{ (report.score * 3.2673)|round(1) }} 326.73"/>
-      </svg>
-      <div class="score-text"><strong>{{ report.score }}</strong><span>out of 100</span></div>
-    </div>
-
-    <div class="banner banner-success" role="status">
-      <svg class="banner-icon" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="currentColor"/><path d="m5.8 10.3 2.8 2.8 5.6-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <div><strong>Validation complete</strong>
-        <p>{% if report.counts.error %}Your file has been validated. Some records need attention.{% else %}No errors. Check the warnings before you use the data.{% endif %}</p></div>
-    </div>
-
-    <div class="stats">
-      <div class="stat"><strong>{{ report.rows }}</strong><span>Total records</span></div>
-      <div class="stat stat-good"><strong>{{ report.valid_rows }}</strong><span>Valid records</span></div>
-      <div class="stat stat-error"><strong>{{ report.counts.error }}</strong><span>Errors found</span></div>
-      <div class="stat stat-warning"><strong>{{ report.counts.warning }}</strong><span>Warnings found</span></div>
-    </div>
-
-    <details class="options small">
-      <summary>How is the score worked out?</summary>
-      <p class="muted">We start at 100. We take off the percent of rows that have a problem, and 10 more for each problem that affects the whole file, such as a missing column.</p>
-    </details>
-
-    {% if report.engine == 'demo' %}
-    <div class="banner banner-info" role="status"><div><strong>Demo mode.</strong><p>The team's checking code was not found, so a simple built-in checker was used.</p></div></div>
-    {% endif %}
-    {% for note in report.notes %}<div class="banner banner-warning" role="status"><div><p>{{ note }}</p></div></div>{% endfor %}
-
-    <p class="eyebrow">Rules checked &middot; {{ rule_source }}</p>
-    {{ rule_status() }}
-
-    {% if report.auto_detect and report.explanations %}
-    <details class="card options">
-      <summary>Detected rules (auto-detect)</summary>
-      <ul class="plain">
-        {% for col, reason in report.explanations.items() %}<li><span class="mono">{{ col }}</span> &middot; {{ reason }}</li>{% endfor %}
-      </ul>
-    </details>
-    {% endif %}
-
-    {% if report.fix_log %}
-    <div class="card">
-      <strong>Auto-fix available</strong>
-      <p class="small muted">{{ report.fix_summary }}</p>
+  {% if report.fix_log %}
+  <section class="card fixlog" aria-labelledby="fix-title">
+    <div class="fixlog-head">
+      <div><h2 id="fix-title" class="card-title">What auto-fix changes</h2>
+        <p class="small muted">{{ report.fix_summary }}. Only safe changes are made automatically; problems that need a person, such as a missing name, are left for you.</p></div>
       <a class="btn btn-secondary" href="{{ url_for('download_cleaned') }}">Download cleaned CSV</a>
     </div>
-    {% endif %}
-
-    <div class="stack">
-      <a class="btn btn-primary btn-wide" href="#findings" data-view="findings">View Detailed Report</a>
-      <a class="btn btn-secondary btn-wide" href="{{ url_for('index') }}">Upload Another File</a>
+    <div class="table-scroll">
+      <table class="log">
+        <thead><tr><th scope="col">Row</th><th scope="col">Column</th><th scope="col">Before</th><th scope="col">After</th><th scope="col">Change</th></tr></thead>
+        <tbody>
+          {% for e in report.fix_log %}
+          <tr><td class="mono">{% if e.row is not none %}{{ e.row|int + 2 }}{% endif %}</td><td class="mono">{{ e.column or 'whole row' }}</td>
+            <td class="mono before">{{ e.before }}</td><td class="mono">{{ e.after }}</td><td>{{ e.fix|capitalize }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </section>
-
-  {# ---------- 05 / 06 · Validation Findings ---------- #}
-  <section class="view" id="view-findings" aria-labelledby="findings-title">
-    <h1 id="findings-title">Validation Findings</h1>
-    <p class="mono filename">{{ report.filename }}</p>
-    <p class="lead" id="filter-status" aria-live="polite">Review the affected records and use the suggested fixes to update your CSV.</p>
-
-    <div class="filters" role="group" aria-label="Filter problems">
-      <button type="button" class="chip-btn is-active" data-filter="all" aria-pressed="true">All <span>{{ report.total }}</span></button>
-      <button type="button" class="chip-btn" data-filter="error" aria-pressed="false">Errors <span>{{ report.counts.error }}</span></button>
-      <button type="button" class="chip-btn" data-filter="warning" aria-pressed="false">Warnings <span>{{ report.counts.warning }}</span></button>
-      {% if report.counts.info %}<button type="button" class="chip-btn" data-filter="info" aria-pressed="false">Notes <span>{{ report.counts.info }}</span></button>{% endif %}
-    </div>
-
-    {% if report.truncated %}
-    <p class="muted small">Showing the first {{ report.findings|length }} of {{ report.total }} problems.</p>
-    {% endif %}
-
-    <div id="finding-list">
-      {% for f in report.findings %}
-      <article class="card finding" data-severity="{{ f.severity }}">
-        <div class="finding-head">
-          <span class="badge badge-{{ f.severity }} f-level"><span class="badge-icon" aria-hidden="true">{{ '!' if f.severity == 'error' else ('▲' if f.severity == 'warning' else 'i') }}</span>{{ f.severity|capitalize }}</span>
-          <span class="rule-tag mono f-rule">{{ f.rule }}</span>
-        </div>
-        <p class="where mono f-where">{% if f.row %}row {{ f.row }}{% else %}whole file{% endif %}{% if f.column %} &nbsp;&middot;&nbsp; {{ f.column }}{% endif %}</p>
-        <p class="message f-msg">{{ f.message }}</p>
-        <p class="hint"><span class="visually-hidden">How to fix it: </span><span class="f-hint">{{ f.hint }}</span></p>
-      </article>
-      {% endfor %}
-    </div>
-
-    <div class="actions">
-      <a class="btn btn-primary" href="#summary" data-view="summary">Back to Summary</a>
-      <button class="btn btn-secondary" type="button" id="download-csv">Download problems (CSV)</button>
-      <button class="btn btn-secondary" type="button" id="print-report">Print report</button>
-    </div>
-  </section>
-{% endif %}
-
+  {% endif %}
 </div>
 {% endblock %}

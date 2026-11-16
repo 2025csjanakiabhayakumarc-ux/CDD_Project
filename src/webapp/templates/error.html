@@ -1,26 +1,33 @@
 {% extends "base.html" %}
 {% block title %}Could not read file · DataGuard{% endblock %}
+{% block body_class %}page-error{% endblock %}
+{% block crumbs %}<a href="{{ url_for('index') }}">Upload</a><span class="crumb-sep" aria-hidden="true">/</span><span aria-current="page">Problem with file</span>{% endblock %}
 
 {% block content %}
-<div class="page">
-  <div class="banner banner-error" role="alert">
-    <svg class="banner-icon" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="currentColor"/><path d="M10 5.5v5.5M10 14v.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
-    <div><strong>File could not be read</strong>
-      <p>{{ message }}{% if filename %} <span class="mono">({{ filename }})</span>{% endif %}</p></div>
-  </div>
+<div class="error-layout">
+  <section class="card error-card" role="alert" aria-labelledby="err-title">
+    <span class="error-art" aria-hidden="true">
+      <svg viewBox="0 0 64 48" width="64" height="48">
+        <rect x="1" y="1" width="62" height="46" rx="6" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/>
+        <path d="M1 13h62M17 1v12M33 1v12M49 1v12" stroke="var(--line-strong)" stroke-width="1.2"/>
+        <path d="M14 24l36 14M50 24 14 38" stroke="var(--err)" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+      </svg>
+    </span>
+    <p class="eyebrow">Upload stopped</p>
+    <h1 id="err-title">File could not be read</h1>
+    <p class="lead">{{ message }}{% if filename and filename not in message %} <span class="mono">({{ filename }})</span>{% endif %}</p>
 
-  <div class="card">
-    <p class="eyebrow">Things to check</p>
+    <h2 class="panel-title">Things to check</h2>
     <ul class="checklist">
       <li>The file ends in .csv or .xlsx. In Excel or Sheets, choose <em>Save as</em> and pick CSV.</li>
-      <li>It opens in Excel or Google Sheets without a warning</li>
-      <li>The first row contains the column names</li>
-      <li>The file is not empty and is under 5 MB</li>
+      <li>It opens in Excel or Google Sheets without a warning.</li>
+      <li>The first row holds the column names.</li>
+      <li>The file is not empty and is under 5 MB.</li>
     </ul>
-  </div>
-
-  <div class="stack">
-    <a class="btn btn-primary btn-wide" href="{{ url_for('index') }}">Try another file</a>
-  </div>
+    <div class="error-actions">
+      <a class="btn btn-primary" href="{{ url_for('index') }}">Try another file</a>
+      <a class="btn btn-ghost" href="{{ url_for('try_sample', name='employees') }}">Open a sample file instead</a>
+    </div>
+  </section>
 </div>
 {% endblock %}

@@ -209,3 +209,36 @@ def test_unreadable_file_message_hides_server_paths(monkeypatch):
     assert report.error
     assert "mine.csv" in report.error
     assert "dataguard_" not in report.error and "Temp" not in report.error
+
+
+def test_grid_marks_each_problem_on_its_own_cell(monkeypatch):
+    """The data X-ray grid puts each finding on the cell it is about, in spreadsheet rows."""
+    pytest.importorskip("src.engine")
+    monkeypatch.delenv("DATAGUARD_UI_DEMO", raising=False)
+    root = pathlib.Path(__file__).resolve().parents[1]
+    report = service.analyze_upload(
+        "employees.csv", (root / "samples" / "employees.csv").read_bytes(),
+        config_path=str(root / "templates_rules" / "employees.yaml"),
+    )
+    grid = report.grid
+    marked = {
+        (row["num"], report.columns[i]): cell["sev"]
+        for row in grid["rows"] for i, cell in enumerate(row["cells"]) if cell.get("sev")
+    }
+    assert marked == {("4", "email"): "error", ("5", "name"): "error",
+                      ("6", "join_date"): "error", ("7", "phone"): "error"}
+    duplicate = next(row for row in grid["rows"] if row["num"] == "13")
+    assert duplicate["sev"] == "warning" and duplicate["removed"]  # auto-fix drops it
+    assert [f.row for f in report.findings] == sorted((f.row for f in report.findings), key=int)
+    assert "%Y" not in " ".join(f.hint for f in report.findings)  # dates shown as YYYY-MM-DD
+
+
+def test_sample_links_open_a_report(monkeypatch):
+    pytest.importorskip("src.engine")
+    monkeypatch.delenv("DATAGUARD_UI_DEMO", raising=False)
+    client = create_app().test_client()
+    messy = client.get("/try/employees")
+    assert messy.status_code == 200 and b"5876543215" in messy.data
+    clean = client.get("/try/employees_clean")
+    assert clean.status_code == 200 and b'data-total="0"' in clean.data
+    assert client.get("/try/not-a-sample").status_code == 404

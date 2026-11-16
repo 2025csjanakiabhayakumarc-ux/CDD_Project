@@ -1,11 +1,13 @@
 {% extends "base.html" %}
-{% block title %}DataGuard · Check your data{% endblock %}
+{% block title %}DataGuard · Check a file{% endblock %}
+{% block body_class %}page-upload{% endblock %}
 
 {% block content %}
-<div class="page">
-  <section id="upload-view">
-    <h1>CSV Data Validation Made Simple</h1>
-    <p class="lead">Upload a CSV file to check data quality and find errors before you use your data.</p>
+<div class="upload-layout">
+  <section class="upload-main" aria-labelledby="upload-title">
+    <p class="eyebrow">Data quality check</p>
+    <h1 id="upload-title">Find every bad cell before the file goes anywhere.</h1>
+    <p class="lead">Upload a spreadsheet. DataGuard checks every row against your rules, shows each problem in place, and gives you back a cleaned copy with a record of each change.</p>
 
     {% if error %}
     <div class="banner banner-error" role="alert">
@@ -14,58 +16,82 @@
     </div>
     {% endif %}
 
-    <form id="upload-form" method="post" action="{{ url_for('validate') }}" enctype="multipart/form-data">
+    <form id="upload-form" class="upload-card" method="post" action="{{ url_for('validate') }}" enctype="multipart/form-data">
       <label class="dropzone" id="dropzone" for="file">
         <input class="visually-hidden" id="file" name="file" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
-        <span class="tile" aria-hidden="true">
-          <svg class="tile-up" viewBox="0 0 24 24" width="20" height="20"><path d="M12 19V5m0 0-6 6m6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <svg class="tile-ok" viewBox="0 0 24 24" width="22" height="22"><path d="m5 12.5 4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="drop-art" aria-hidden="true">
+          <svg viewBox="0 0 64 48" width="64" height="48">
+            <rect x="1" y="1" width="62" height="46" rx="6" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="1.5"/>
+            <path d="M1 13h62M1 25h62M1 37h62M17 1v46M33 1v46M49 1v46" stroke="var(--line-strong)" stroke-width="1.2"/>
+            <rect x="33.6" y="25.6" width="14.8" height="10.8" fill="var(--err-soft)"/>
+            <path d="M33.6 25.6h14.8v10.8H33.6z" fill="none" stroke="var(--err)" stroke-width="1.5"/>
+          </svg>
         </span>
-        <span class="dropzone-title" id="drop-title">Drag and drop your CSV file here</span>
-        <span class="dropzone-sub" id="drop-sub">Supported file formats: .csv or .xlsx &middot; up to 5 MB</span>
+        <span class="dropzone-title" id="drop-title">Drop a CSV or Excel file here</span>
+        <span class="dropzone-sub" id="drop-sub">or <span class="link-text">browse your computer</span> &middot; .csv or .xlsx up to 5 MB</span>
       </label>
 
-      <label class="btn btn-secondary btn-wide" for="file" id="browse-btn">Browse Files</label>
-
-      <div class="card checks">
-        <p class="eyebrow">What DataGuard will check</p>
-        <label class="field-label" for="template">Rule template</label>
-        <select id="template" name="template">
-          {% for s in rule_sets %}
-          <option value="{{ s.value }}"{% if loop.first %} selected{% endif %}>{{ s.label }}</option>
-          {% endfor %}
-        </select>
-        <div class="tags" id="check-columns"></div>
-        <p class="small muted" id="check-summary"></p>
-        <details class="options">
-          <summary>Optional: use your own required columns</summary>
-          <label class="field-label" for="required">Column names, separated by commas</label>
-          <input id="required" name="required" type="text" placeholder="student_id, name, attendance_percent" autocomplete="off">
-        </details>
+      <div class="file-peek" id="file-peek" hidden>
+        <div class="file-peek-head"><span class="mono" id="peek-name"></span><span class="muted small" id="peek-size"></span></div>
+        <div class="table-scroll"><table class="peek-table" id="peek-table"></table></div>
       </div>
 
-      <button class="btn btn-primary btn-wide" type="submit" id="submit-btn">Validate CSV</button>
-      <p class="helper" id="submit-help">Choose a file to continue</p>
-      <label class="link-btn" for="file" id="change-file" hidden>Choose a different file</label>
+      <div class="control-row">
+        <div class="field">
+          <label class="field-label" for="template">Rule template</label>
+          <select id="template" name="template">
+            {% for s in rule_sets %}
+            <option value="{{ s.value }}"{% if loop.first %} selected{% endif %}>{{ s.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-primary btn-lg" type="submit" id="submit-btn">
+          <span class="btn-label">Validate CSV</span>
+          <span class="spinner" aria-hidden="true"></span>
+        </button>
+      </div>
+      <p class="helper" id="submit-help" aria-live="polite">Choose a file to continue</p>
+
+      <details class="options">
+        <summary>Use my own required columns</summary>
+        <label class="field-label" for="required">Column names, separated by commas</label>
+        <input id="required" name="required" type="text" placeholder="student_id, name, attendance" autocomplete="off">
+      </details>
     </form>
 
-    <div class="card note">
-      <strong>Your file is not stored</strong>
-      <p>DataGuard reads the file, reports what it finds and discards it. Nothing is kept on a server.</p>
+    <div class="samples">
+      <span class="samples-label">No file handy? Try a sample:</span>
+      <a class="sample" href="{{ url_for('try_sample', name='employees') }}">
+        <span class="sample-dot sample-dot-bad" aria-hidden="true"></span>
+        <span><strong>employees.csv</strong><span class="muted"> · 15 rows with problems</span></span>
+      </a>
+      <a class="sample" href="{{ url_for('try_sample', name='employees_clean') }}">
+        <span class="sample-dot sample-dot-ok" aria-hidden="true"></span>
+        <span><strong>employees_clean.csv</strong><span class="muted"> · fixed copy</span></span>
+      </a>
     </div>
   </section>
 
-  <section id="checking-view" hidden aria-live="polite">
-    <h1>Checking your file</h1>
-    <p class="lead">This usually takes a few seconds. You can watch each rule run below.</p>
-    <div class="card progress-card">
-      <div class="progress-head"><span class="mono" id="check-file"></span><span class="progress-pct" id="check-pct">0%</span></div>
-      <div class="progress" role="progressbar" aria-label="Checking progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="check-bar"></span></div>
-      <p class="small muted" id="check-count"></p>
-    </div>
-    <ul class="card rule-list" id="check-rules"></ul>
-    <button class="link-btn" type="button" id="cancel-check">Cancel</button>
-  </section>
+  <aside class="upload-side">
+    <section class="panel" aria-labelledby="checks-title">
+      <h2 id="checks-title" class="panel-title">What this template checks</h2>
+      <p class="small muted" id="check-summary"></p>
+      <ol class="rule-steps" id="check-rules"></ol>
+      <div class="tags" id="check-columns" aria-label="Columns this template expects"></div>
+    </section>
+
+    <section class="panel panel-quiet" aria-labelledby="why-title">
+      <h2 id="why-title" class="panel-title">Why not paste it into a chatbot?</h2>
+      <ul class="why">
+        <li><span class="why-icon" aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18"><rect x="4" y="9" width="12" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></span>
+          <div><strong>Personal data stays here.</strong> Names, phone numbers and dates of birth are checked by this app. Nothing is sent to an AI service.</div></li>
+        <li><span class="why-icon" aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18"><path d="M4 10a6 6 0 0 1 10.2-4.3M16 10a6 6 0 0 1-10.2 4.3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14.5 2.5v3.4h-3.4M5.5 17.5v-3.4h3.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <div><strong>Same file, same answer.</strong> Rules live in a YAML file, so every run checks the same things in the same way.</div></li>
+        <li><span class="why-icon" aria-hidden="true"><svg viewBox="0 0 20 20" width="18" height="18"><path d="M5 3.5h7l3 3v10H5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M7.5 10h5M7.5 13h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+          <div><strong>Every row, every change on record.</strong> All rows are checked, and the cleaned file comes with a list of exactly what was changed.</div></li>
+      </ul>
+    </section>
+  </aside>
 </div>
 
 <script type="application/json" id="rule-sets">{{ rule_sets|tojson }}</script>

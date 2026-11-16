@@ -15,7 +15,13 @@ from flask import Flask, Response, render_template, request, session
 from . import service
 
 ALLOWED_SUFFIXES = (".csv", ".tsv", ".txt", ".xlsx")
-_TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates_rules"
+_ROOT = Path(__file__).resolve().parents[2]
+_TEMPLATES_DIR = _ROOT / "templates_rules"
+# One-click sample files on the upload page: name -> (file in samples/, rule template)
+SAMPLES = {
+    "employees": ("employees.csv", "employees"),
+    "employees_clean": ("employees_clean.csv", "employees"),
+}
 
 
 def _describe(config_path: Path) -> dict:
@@ -66,25 +72,36 @@ def create_app() -> Flask:
         if not upload.filename.lower().endswith(ALLOWED_SUFFIXES):
             return upload_page("That file type is not supported. Please upload a .csv or .xlsx file.", 400)
 
-        sets = {s["value"]: s for s in _rule_sets()}
         choice = request.form.get("template", "default")
         if request.form.get("rule_mode") == "auto":  # older form field, still honoured
             choice = "auto"
-        rule_set = sets.get(choice, sets["default"])
-
-        file_data = upload.read()
         required = [c.strip() for c in request.form.get("required", "").split(",") if c.strip()]
+        return check(upload.filename, upload.read(), choice, required)
+
+    @app.get("/try/<name>")
+    def try_sample(name: str):
+        if name not in SAMPLES:
+            return upload_page("That sample file does not exist.", 404)
+        filename, template = SAMPLES[name]
+        path = _ROOT / "samples" / filename
+        if not path.is_file():
+            return upload_page("That sample file is missing from the samples folder.", 404)
+        return check(filename, path.read_bytes(), template, [])
+
+    def check(filename: str, file_data: bytes, choice: str, required: list[str]):
+        sets = {s["value"]: s for s in _rule_sets()}
+        rule_set = sets.get(choice, sets["default"])
         report = service.analyze_upload(
-            upload.filename, file_data, required,
+            filename, file_data, required,
             config_path=rule_set.get("path"), auto_detect=rule_set["value"] == "auto",
         )
         if report.error:
             return render_template("error.html", message=report.error, filename=report.filename), 422
 
         session["last_upload"] = file_data
-        session["last_filename"] = upload.filename
+        session["last_filename"] = filename
         return render_template("report.html", report=report, rule_source=rule_set["source"],
-                               all_rules=service.RULE_NAMES)
+                               rule_label=rule_set["label"], all_rules=service.RULE_NAMES)
 
     @app.errorhandler(413)
     def too_big(_error):

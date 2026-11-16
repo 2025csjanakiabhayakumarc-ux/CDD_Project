@@ -1,9 +1,10 @@
+/* DataGuard front end. Everything here is progressive: the pages work without it. */
 (function () {
   "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
 
-  function $(id) { return document.getElementById(id); }
-
-  // ---- light / dark switch ----
+  /* ---------- Theme toggle ---------- */
   var toggle = $("theme-toggle");
   if (toggle) {
     toggle.addEventListener("click", function () {
@@ -11,240 +12,227 @@
       var dark = root.dataset.theme
         ? root.dataset.theme === "dark"
         : window.matchMedia("(prefers-color-scheme: dark)").matches;
-      var next = dark ? "light" : "dark";
-      root.dataset.theme = next;
-      try { localStorage.setItem("dg-theme", next); } catch (e) { /* storage may be blocked */ }
+      root.dataset.theme = dark ? "light" : "dark";
+      try { localStorage.setItem("dg-theme", root.dataset.theme); } catch (e) { /* storage blocked */ }
     });
   }
 
-  // ---- upload page (Figma 01, 02, 03) ----
+  /* ---------- Upload page ---------- */
+  var RULE_TEXT = {
+    required_columns: "Every expected column is present",
+    missing_values: "No blank cells in required fields",
+    duplicates: "No repeated rows (reported as a warning)",
+    range_and_format: "Emails, dates and numbers are well formed and in range",
+    india_formats: "Indian mobile numbers and other Indian formats you configure"
+  };
+
   var form = $("upload-form");
   if (form) {
-    var zone = $("dropzone");
-    var input = $("file");
-    var submit = $("submit-btn");
-    var select = $("template");
-    var ruleSets = [];
-    try { ruleSets = JSON.parse($("rule-sets").textContent); } catch (e) { /* menu still works */ }
-    var fileInfo = { rows: null, cols: null };
+    var input = $("file"), zone = $("dropzone"), submit = $("submit-btn"), help = $("submit-help");
+    var select = $("template"), setsEl = $("rule-sets");
+    var sets = [];
+    try { sets = JSON.parse(setsEl ? setsEl.textContent : "[]"); } catch (e) { sets = []; }
 
-    function chosenSet() {
-      for (var i = 0; i < ruleSets.length; i++) if (ruleSets[i].value === select.value) return ruleSets[i];
-      return { columns: [], rules: [], source: "" };
-    }
+    var showRules = function () {
+      var set = sets.filter(function (s) { return s.value === select.value; })[0];
+      if (!set) return;
+      var list = $("check-rules"), tags = $("check-columns"), summary = $("check-summary");
+      list.innerHTML = "";
+      set.rules.forEach(function (r, i) {
+        var li = document.createElement("li");
+        li.innerHTML = '<span class="n"></span><span><span class="r"></span><span class="d"></span></span>';
+        li.querySelector(".n").textContent = String(i + 1);
+        li.querySelector(".r").textContent = r;
+        li.querySelector(".d").textContent = RULE_TEXT[r] || "";
+        list.appendChild(li);
+      });
+      summary.textContent = set.value === "auto"
+        ? "DataGuard looks at your column names and picks the rules that fit."
+        : set.rules.length + " rule" + (set.rules.length === 1 ? "" : "s") + " from " + set.source + ".";
+      tags.innerHTML = "";
+      set.columns.forEach(function (c) {
+        var t = document.createElement("span");
+        t.className = "tag"; t.textContent = c; tags.appendChild(t);
+      });
+    };
+    if (select) { select.addEventListener("change", showRules); showRules(); }
 
-    function el(tag, cls, text) {
-      var node = document.createElement(tag);
-      if (cls) node.className = cls;
-      if (text !== undefined) node.textContent = text;
-      return node;
-    }
+    var setReady = function (ready) {
+      submit.disabled = !ready;
+      help.textContent = ready ? "Ready to check." : "Choose a file to continue";
+    };
+    setReady(false);
 
-    function showChecks() {
-      var set = chosenSet();
-      var box = $("check-columns");
-      box.replaceChildren();
-      set.columns.forEach(function (c) { box.appendChild(el("span", "tag mono", c)); });
-      var names = set.rules.map(function (r) { return r.replace(/_/g, " "); });
-      $("check-summary").textContent = set.value === "auto"
-        ? "Rules are picked from your file's column names when you validate."
-        : set.rules.length + " rule" + (set.rules.length === 1 ? "" : "s") + " from " + set.source + " · " + names.join(", ");
-    }
+    var splitLine = function (line) {
+      var out = [], cur = "", q = false;
+      for (var i = 0; i < line.length; i++) {
+        var ch = line[i];
+        if (ch === '"') { if (q && line[i + 1] === '"') { cur += '"'; i++; } else { q = !q; } }
+        else if (ch === "," && !q) { out.push(cur); cur = ""; }
+        else { cur += ch; }
+      }
+      out.push(cur);
+      return out;
+    };
 
-    function countCsv(file) {
-      fileInfo = { rows: null, cols: null };
-      if (!/\.(csv|tsv|txt)$/i.test(file.name) || !window.FileReader) return;
-      var reader = new FileReader();
-      reader.onload = function () {
-        var lines = String(reader.result).split(/\r?\n/).filter(function (l) { return l.trim() !== ""; });
-        if (!lines.length) return;
-        var delim = (lines[0].match(/\t/g) || []).length > (lines[0].match(/,/g) || []).length ? "\t" : ",";
-        fileInfo = { rows: Math.max(0, lines.length - 1), cols: lines[0].split(delim).length };
-        showFile();
-      };
-      reader.readAsText(file.slice(0, 5 * 1024 * 1024));
-    }
-
-    function showFile() {
-      var file = input.files && input.files[0];
-      zone.classList.toggle("has-file", !!file);
-      $("browse-btn").hidden = !!file;
-      $("change-file").hidden = !file;
-      $("submit-help").hidden = !!file;
-      submit.disabled = !file;
-      if (!file) {
-        $("drop-title").textContent = "Drag and drop your CSV file here";
-        $("drop-sub").textContent = "Supported file formats: .csv or .xlsx · up to 5 MB";
+    var peek = function (file) {
+      $("peek-name").textContent = file.name;
+      var kb = file.size / 1024;
+      $("peek-size").textContent = kb < 1024 ? Math.max(1, Math.round(kb)) + " KB" : (kb / 1024).toFixed(1) + " MB";
+      var table = $("peek-table");
+      table.innerHTML = "";
+      $("file-peek").hidden = false;
+      if (!/\.(csv|txt|tsv)$/i.test(file.name)) {
+        table.innerHTML = '<tbody><tr><td>Excel file: the preview appears after checking.</td></tr></tbody>';
         return;
       }
-      $("drop-title").textContent = file.name;
-      var detail = fileInfo.rows === null
-        ? Math.max(1, Math.round(file.size / 1024)) + " KB"
-        : fileInfo.rows + " row" + (fileInfo.rows === 1 ? "" : "s") + " · " + fileInfo.cols + " column" + (fileInfo.cols === 1 ? "" : "s");
-      $("drop-sub").textContent = "Ready to check · " + detail;
-    }
+      var reader = new FileReader();
+      reader.onload = function () {
+        var lines = String(reader.result).split(/\r?\n/).filter(function (l) { return l.trim() !== ""; }).slice(0, 5);
+        if (!lines.length) { table.innerHTML = "<tbody><tr><td>This file looks empty.</td></tr></tbody>"; return; }
+        var head = document.createElement("thead"), body = document.createElement("tbody");
+        lines.forEach(function (line, i) {
+          var tr = document.createElement("tr");
+          splitLine(line).forEach(function (v) {
+            var cell = document.createElement(i === 0 ? "th" : "td");
+            cell.textContent = v; tr.appendChild(cell);
+          });
+          (i === 0 ? head : body).appendChild(tr);
+        });
+        table.appendChild(head); table.appendChild(body);
+      };
+      reader.readAsText(file.slice(0, 64 * 1024));
+    };
 
-    function fileChanged() {
+    var chosen = function () {
       var file = input.files && input.files[0];
-      fileInfo = { rows: null, cols: null };
-      showFile();
-      if (file) countCsv(file);
-    }
+      if (!file) { setReady(false); zone.classList.remove("has-file"); $("file-peek").hidden = true; return; }
+      zone.classList.add("has-file");
+      $("drop-title").textContent = file.name;
+      $("drop-sub").innerHTML = 'Selected. <span class="link-text">Choose a different file</span>';
+      peek(file);
+      setReady(true);
+    };
+    input.addEventListener("change", chosen);
 
-    input.addEventListener("change", fileChanged);
-    ["dragenter", "dragover"].forEach(function (evt) {
-      zone.addEventListener(evt, function (e) { e.preventDefault(); zone.classList.add("is-dragging"); });
+    ["dragenter", "dragover"].forEach(function (t) {
+      zone.addEventListener(t, function (e) { e.preventDefault(); zone.classList.add("is-over"); });
     });
-    ["dragleave", "drop"].forEach(function (evt) {
-      zone.addEventListener(evt, function (e) { e.preventDefault(); zone.classList.remove("is-dragging"); });
+    ["dragleave", "drop"].forEach(function (t) {
+      zone.addEventListener(t, function (e) { e.preventDefault(); zone.classList.remove("is-over"); });
     });
     zone.addEventListener("drop", function (e) {
       if (e.dataTransfer && e.dataTransfer.files.length) {
-        input.files = e.dataTransfer.files;
-        fileChanged();
+        try { input.files = e.dataTransfer.files; } catch (err) { /* older browsers */ }
+        chosen();
       }
     });
-    select.addEventListener("change", showChecks);
-
-    // Checking screen: shown while the server works. Rules are marked "done" in
-    // turn for feedback only; the real results appear on the next page.
-    var timers = [];
-    var submitted = false;
-
-    function setProgress(pct) {
-      $("check-bar").style.width = pct + "%";
-      $("check-pct").textContent = pct + "%";
-      document.querySelector(".progress").setAttribute("aria-valuenow", pct);
-    }
-
-    function showUpload() {
-      timers.forEach(clearTimeout);
-      timers = [];
-      if (submitted) window.stop();
-      submitted = false;
-      $("checking-view").hidden = true;
-      $("upload-view").hidden = false;
-      showFile();
-    }
 
     form.addEventListener("submit", function (e) {
-      if (submitted) return;
-      e.preventDefault();
-      var set = chosenSet();
-      var rules = set.rules.length ? set.rules : ["required_columns"];
-      $("check-file").textContent = input.files[0].name;
-      $("check-count").textContent = (fileInfo.rows === null ? "Checking your file" : "Checking " + fileInfo.rows + " rows") +
-        " against " + rules.length + " rule" + (rules.length === 1 ? "" : "s");
-      var list = $("check-rules");
-      list.replaceChildren();
-      var items = rules.map(function (name) {
-        var li = el("li", "is-wait");
-        li.appendChild(el("span", "dot"));
-        li.appendChild(el("span", "mono", name));
-        li.appendChild(el("span", "status", "waiting"));
-        list.appendChild(li);
-        return li;
-      });
-      setProgress(0);
-      $("upload-view").hidden = true;
-      $("checking-view").hidden = false;
-      window.scrollTo(0, 0);
-
-      var quick = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      var step = quick ? 0 : 220;
-      items.forEach(function (li, i) {
-        timers.push(setTimeout(function () {
-          if (i > 0) { items[i - 1].className = "is-done"; items[i - 1].lastChild.textContent = "done"; }
-          li.className = "is-run";
-          li.lastChild.textContent = "checking";
-          setProgress(Math.round((i / items.length) * 90));
-        }, i * step));
-      });
-      timers.push(setTimeout(function () {
-        var last = items[items.length - 1];
-        last.className = "is-done";
-        last.lastChild.textContent = "done";
-        setProgress(95);
-        submitted = true;
-        form.submit();
-      }, items.length * step));
+      if (!input.files || !input.files.length) { e.preventDefault(); setReady(false); return; }
+      submit.classList.add("is-busy");
+      submit.querySelector(".btn-label").textContent = "Checking…";
+      help.textContent = "Checking every row against " + (select.options[select.selectedIndex] || {}).text + ".";
     });
-
-    $("cancel-check").addEventListener("click", showUpload);
-    // Coming back with the browser's Back button: show the upload screen again.
-    window.addEventListener("pageshow", function () { submitted = false; showUpload(); });
-
-    showChecks();
-    showFile();
+    // Coming back with the browser's Back button must not leave the button stuck.
+    window.addEventListener("pageshow", function () {
+      submit.classList.remove("is-busy");
+      submit.querySelector(".btn-label").textContent = "Validate CSV";
+    });
   }
 
-  // ---- report page: summary (04) and findings (05, 06) ----
-  var summary = $("view-summary");
-  var findings = $("view-findings");
-  if (summary && findings) {
-    function route() {
-      var showFindings = location.hash === "#findings";
-      summary.hidden = showFindings;
-      findings.hidden = !showFindings;
-      window.scrollTo(0, 0);
-    }
-    window.addEventListener("hashchange", route);
-    route();
-  }
+  /* ---------- Report page ---------- */
+  var report = $("dataguard-report");
+  if (!report) return;
 
-  var cards = document.querySelectorAll(".finding");
-  var filterButtons = document.querySelectorAll("[data-filter]");
-  var words = { error: "errors", warning: "warnings", info: "notes" };
-  filterButtons.forEach(function (btn) {
+  var xray = document.querySelector(".xray");
+  var findings = $$(".finding");
+
+  // Original / after auto-fix
+  $$(".seg").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var cleaned = btn.getAttribute("data-version") === "cleaned";
+      xray.classList.toggle("is-cleaned", cleaned);
+      $$(".seg").forEach(function (b) {
+        var on = b === btn;
+        b.classList.toggle("is-on", on);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    });
+  });
+
+  // Filters
+  var words = { all: "all problems", error: "errors", warning: "warnings", info: "notes" };
+  $$("[data-filter]").forEach(function (btn) {
     btn.addEventListener("click", function () {
       var wanted = btn.getAttribute("data-filter");
-      var shown = 0;
-      filterButtons.forEach(function (b) {
+      $$("[data-filter]").forEach(function (b) {
         var on = b === btn;
         b.classList.toggle("is-active", on);
         b.setAttribute("aria-pressed", on ? "true" : "false");
       });
-      cards.forEach(function (card) {
-        card.hidden = wanted !== "all" && card.getAttribute("data-severity") !== wanted;
-        if (!card.hidden) shown++;
+      var shown = 0;
+      findings.forEach(function (f) {
+        var keep = wanted === "all" || f.getAttribute("data-severity") === wanted;
+        f.hidden = !keep;
+        if (keep) shown++;
       });
-      var others = Object.keys(words).filter(function (k) { return k !== wanted; })
-        .filter(function (k) { return document.querySelector('[data-filter="' + k + '"]'); })
-        .map(function (k) { return words[k].charAt(0).toUpperCase() + words[k].slice(1); });
-      $("filter-status").textContent = wanted === "all"
-        ? "Review the affected records and use the suggested fixes to update your CSV."
-        : "Showing " + shown + " " + words[wanted] + ". " + others.join(" and ") + " are hidden.";
+      var status = $("filter-status");
+      if (status) status.textContent = "Showing " + shown + " " + words[wanted] + ".";
     });
   });
 
-  function csvCell(value) {
-    var text = String(value).replace(/\s+/g, " ").trim();
-    if (/^[=+\-@]/.test(text)) text = "'" + text; // stop spreadsheet formula tricks
-    return '"' + text.replace(/"/g, '""') + '"';
-  }
+  // Grid <-> problems list
+  var focusTarget = function (fid) {
+    var target = document.querySelector('.grid [data-fid="' + fid + '"]');
+    if (!target) return;
+    $$(".grid .is-focus").forEach(function (el) { el.classList.remove("is-focus"); });
+    void target.offsetWidth; // restart the pulse
+    target.classList.add("is-focus");
+    target.scrollIntoView({ block: "center", inline: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  };
+  var selectFinding = function (fid, scrollList) {
+    findings.forEach(function (f) { f.classList.toggle("is-selected", f.getAttribute("data-fid") === String(fid)); });
+    var item = document.querySelector('.finding[data-fid="' + fid + '"]');
+    if (item && scrollList) {
+      if (item.hidden) { var all = document.querySelector('[data-filter="all"]'); if (all) all.click(); }
+      item.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  };
+  findings.forEach(function (f) {
+    f.querySelector(".finding-hit").addEventListener("click", function () {
+      var fid = f.getAttribute("data-fid");
+      selectFinding(fid, false);
+      focusTarget(fid);
+    });
+  });
+  $$(".grid [data-fid]").forEach(function (el) {
+    var go = function () { var fid = el.getAttribute("data-fid"); selectFinding(fid, true); focusTarget(fid); };
+    var hit = el.tagName === "TR" ? el.querySelector(".rownum") : el;
+    hit.addEventListener("click", go);
+    if (el.tagName === "TD") el.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+  });
 
-  var download = $("download-csv");
-  if (download) {
-    download.addEventListener("click", function () {
-      var lines = [["Level", "Rule", "Where", "Problem", "How to fix it"].map(csvCell).join(",")];
-      cards.forEach(function (card) {
-        if (card.hidden) return;
-        lines.push([".badge", ".f-rule", ".f-where", ".f-msg", ".f-hint"].map(function (sel) {
-          var node = card.querySelector(sel);
-          return csvCell(sel === ".badge" ? node.lastChild.textContent : node.textContent);
-        }).join(","));
+  // Export the problems list as CSV
+  var exportBtn = $("download-csv");
+  if (exportBtn) {
+    exportBtn.addEventListener("click", function () {
+      var q = function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; };
+      var rows = [["severity", "rule", "row", "column", "problem", "how_to_fix"]];
+      findings.forEach(function (f) {
+        rows.push([
+          f.getAttribute("data-severity"), f.querySelector(".f-rule").textContent.trim(),
+          f.getAttribute("data-row"), f.getAttribute("data-col"),
+          f.querySelector(".f-msg").textContent.trim(), f.querySelector(".f-hint").textContent.trim()
+        ]);
       });
-      var blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
-      var link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = "dataguard-problems.csv";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(link.href);
+      var blob = new Blob([rows.map(function (r) { return r.map(q).join(","); }).join("\n")], { type: "text/csv" });
+      var a = document.createElement("a");
+      var name = (document.querySelector(".file-title") || {}).textContent || "data.csv";
+      a.href = URL.createObjectURL(blob);
+      a.download = name.trim().replace(/\.[^.]+$/, "") + "_problems.csv";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
     });
   }
-
-  var print = $("print-report");
-  if (print) print.addEventListener("click", function () { window.print(); });
 })();
