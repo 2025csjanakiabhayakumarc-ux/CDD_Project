@@ -74,3 +74,57 @@ def test_no_changes_returns_empty_log():
     fixed, log = fix(df)
     assert log == []
     assert len(fixed) == 2
+
+
+def test_knn_imputes_blank_salary():
+    import numpy as np
+    df = pd.DataFrame({
+        "emp_id": [f"E{i}" for i in range(10)],
+        "salary": [50000, 55000, 60000, np.nan, 52000, 58000, 61000, 54000, 57000, 59000],
+    })
+    fixed, log = fix(df)
+    assert pd.notna(fixed.at[3, "salary"])
+    knn_entries = [e for e in log if e["fix"] == "KNN imputation"]
+    assert len(knn_entries) == 1
+    assert knn_entries[0]["row"] == 3
+    assert knn_entries[0]["column"] == "salary"
+    assert knn_entries[0]["estimated"] is True
+
+
+def test_dd_mm_yyyy_date_converted():
+    df = pd.DataFrame({"join_date": ["15/01/2024", "2024-03-10"]})
+    fixed, log = fix(df, date_columns=["join_date"], date_format="%Y-%m-%d")
+    assert fixed.at[0, "join_date"] == "2024-01-15"
+    date_entries = [e for e in log if e["fix"] == "normalize date"]
+    assert len(date_entries) == 1
+
+
+def test_id_columns_never_filled():
+    import numpy as np
+    df = pd.DataFrame({
+        "emp_id": ["E001", np.nan, "E003", "E004", "E005", "E006", "E007", "E008", "E009", "E010"],
+        "name": ["Alice", np.nan, "Charlie", "Diana", "Eve", "Frank", "Grace", "Hank", "Ivy", "Jack"],
+        "email": ["a@co.com", np.nan, "c@co.com", "d@co.com", "e@co.com", "f@co.com", "g@co.com", "h@co.com", "i@co.com", "j@co.com"],
+        "salary": [50000, 55000, 60000, 52000, 58000, 61000, 54000, 57000, 59000, 53000],
+    })
+    fixed, log = fix(df)
+    assert pd.isna(fixed.at[1, "emp_id"])
+    assert pd.isna(fixed.at[1, "name"])
+    assert pd.isna(fixed.at[1, "email"])
+    imputed_cols = {e["column"] for e in log if e.get("estimated")}
+    assert "emp_id" not in imputed_cols
+    assert "name" not in imputed_cols
+    assert "email" not in imputed_cols
+
+
+def test_change_log_marks_estimated():
+    import numpy as np
+    df = pd.DataFrame({
+        "category": ["A", "A", "A", "", "A", "B", "A", "A", "A", "A"],
+        "value": [10, 20, 30, np.nan, 50, 60, 70, 80, 90, 100],
+    })
+    _fixed, log = fix(df)
+    estimated_entries = [e for e in log if e.get("estimated")]
+    assert len(estimated_entries) >= 1
+    for entry in estimated_entries:
+        assert entry["estimated"] is True
