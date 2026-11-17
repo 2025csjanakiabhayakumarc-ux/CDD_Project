@@ -307,3 +307,22 @@ def test_checks_that_cannot_run_are_one_quiet_line_not_banners():
     assert "banner-warning" not in page
     assert "Duplicate rows didn&#39;t run" in page or "Duplicate rows didn't run" in page
     assert 'marked "Not run" have no settings' in page or "marked &#34;Not run&#34; have no settings" in page
+
+
+def test_downloads_apply_the_email_and_date_fixes_the_rules_name(client, tmp_path, monkeypatch):
+    """Auto-fix used to run with no settings, so emails and dates were never fixed."""
+    pytest.importorskip("src.autofix")
+    monkeypatch.delenv("DATAGUARD_UI_DEMO", raising=False)
+    monkeypatch.setattr(importlib.import_module("src.webapp.app"), "UPLOAD_DIR", tmp_path)
+    data = (b"emp_id,name,email,phone,join_date,salary\n"
+            b"E1,Priya Sharma,Priya@Company.COM,9876543210,15/01/2022,55000\n"
+            b"E2,Rahul Verma,rahul@company.com,9876543211,2022-03-20,\n"
+            b"E3,Anita Desai,anita@company.com,9876543212,2022-06-01,59000\n")
+    page = upload(client, data, template="employees")
+    assert page.status_code == 200
+    assert b"priya@company.com" in page.data  # shown in "What auto-fix changes"
+    cleaned = client.get("/download-cleaned").data.decode()
+    assert "E1,Priya Sharma,priya@company.com,9876543210,2022-01-15,55000" in cleaned
+    assert ".0" not in cleaned
+    changes = client.get("/download-changes").data.decode()
+    assert "lowercase" in changes and "normalize date" in changes

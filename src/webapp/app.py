@@ -167,6 +167,8 @@ def create_app() -> Flask:
         session.pop("last_upload", None)  # cookies from before this change held the whole file
         session["upload_id"] = _keep_upload(file_data)
         session["last_filename"] = filename
+        # A few column names, so downloads apply the same fixes the report showed.
+        session["fix_settings"] = report.fix_settings
         rule_source = "your plain-English rules (AI)" if ai_config else rule_set["source"]
         return render_template("report.html", report=report, rule_source=rule_source,
                                rule_label=rule_set["label"], all_rules=service.RULE_NAMES,
@@ -184,7 +186,7 @@ def create_app() -> Flask:
         filename = session.get("last_filename", "data.csv")
         if not file_data:
             return upload_page(no_file, 400)
-        cleaned_csv, _summary, _log = service.get_cleaned_csv(file_data)
+        cleaned_csv, _summary, _log = service.get_cleaned_csv(file_data, session.get("fix_settings"))
         stem = filename.rsplit(".", 1)[0] if "." in filename else filename
         return Response(
             cleaned_csv,
@@ -198,7 +200,7 @@ def create_app() -> Flask:
         filename = session.get("last_filename", "data.csv")
         if not file_data:
             return upload_page(no_file, 400)
-        _csv, _summary, log = service.get_cleaned_csv(file_data)
+        _csv, _summary, log = service.get_cleaned_csv(file_data, session.get("fix_settings"))
         changes_csv = service.get_changes_csv(log)
         stem = filename.rsplit(".", 1)[0] if "." in filename else filename
         return Response(

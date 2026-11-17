@@ -128,3 +128,22 @@ def test_change_log_marks_estimated():
     assert len(estimated_entries) >= 1
     for entry in estimated_entries:
         assert entry["estimated"] is True
+
+
+def test_estimate_ignores_code_columns_and_stays_whole():
+    """Phone numbers must not steer the estimate, and whole-number columns get whole numbers."""
+    df = pd.DataFrame({
+        "phone": [9000000001, 9000000002, 9000000003, 9999999999],
+        "salary": [50000, 60000, 70000, None],
+    })
+    fixed, log = fix(df)
+    est = [e for e in log if e.get("estimated")]
+    assert len(est) == 1 and est[0]["column"] == "salary"
+    assert est[0]["after"] == "60000"  # the plain average, not pulled by phone
+    assert fixed.loc[3, "phone"] == 9999999999
+
+
+def test_decimal_columns_keep_two_places():
+    df = pd.DataFrame({"rate": [0.11, 0.12, 0.13, None]})
+    _, log = fix(df)
+    assert log[0]["after"] == "0.12"
