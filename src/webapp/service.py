@@ -197,6 +197,22 @@ def build_grid(report: Report) -> dict:
         elif entry.get("column"):
             fixes[(row, str(entry["column"]))] = str(entry.get("after", ""))
 
+    # Findings that auto-fix takes care of: a flagged cell it changes, or any finding on a
+    # row it removes. The "After auto-fix" view drops their marks and tags their notes, so
+    # it no longer shows a fixed cell still carrying its red "1" and "1 to fix".
+    resolved: set[int] = set()
+    fixed_per_column = {c: 0 for c in report.columns}
+    for i, f in enumerate(report.findings):
+        if not f.row:
+            continue
+        on_removed_row = f.row in removed
+        on_fixed_cell = f.column in fixed_per_column and (f.row, f.column) in fixes
+        if not (on_removed_row or on_fixed_cell):
+            continue
+        resolved.add(i)
+        if f.column in fixed_per_column:
+            fixed_per_column[f.column] += 1
+
     rows = []
     for offset, values in enumerate(report.preview):
         num = str(offset + ROW_OFFSET)
@@ -206,12 +222,18 @@ def build_grid(report: Report) -> dict:
             cell.update(cells.get((num, col), {}))
             if (num, col) in fixes:
                 cell["after"] = fixes[(num, col)]
+            if cell.get("fid") in resolved:
+                cell["resolved"] = True
             row_cells.append(cell)
-        rows.append({"num": num, "cells": row_cells, "removed": num in removed, **row_marks.get(num, {})})
+        row = {"num": num, "cells": row_cells, "removed": num in removed, **row_marks.get(num, {})}
+        if row.get("fid") in resolved:
+            row["resolved"] = True
+        rows.append(row)
 
     total = max(report.rows, 1)
     columns = [
-        {"name": c, "bad": bad_per_column[c], "health": round(100 * (total - bad_per_column[c]) / total)}
+        {"name": c, "bad": bad_per_column[c], "fixed": fixed_per_column[c],
+         "health": round(100 * (total - bad_per_column[c]) / total)}
         for c in report.columns
     ]
     return {
@@ -220,6 +242,7 @@ def build_grid(report: Report) -> dict:
         "shown": len(rows),
         "fixes": len(fixes),
         "removed": len(removed),
+        "resolved": sorted(resolved),
     }
 
 

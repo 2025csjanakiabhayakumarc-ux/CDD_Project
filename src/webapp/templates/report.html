@@ -165,17 +165,17 @@
               {% for c in g.columns %}
               <th scope="col" class="{{ 'is-bad' if c.bad else '' }}">
                 <span class="col-name">{{ c.name }}</span>
-                {% if c.bad %}<span class="col-stat">{{ c.bad }} to fix</span>{% endif %}
+                {% if c.bad %}<span class="col-stat when-original">{{ c.bad }} to fix</span><span class="col-stat when-cleaned{{ ' is-done' if c.fixed == c.bad else '' }}">{% if c.fixed == c.bad %}{{ c.fixed }} fixed{% else %}{{ c.bad - c.fixed }} left to fix{% endif %}</span>{% endif %}
               </th>
               {% endfor %}
             </tr>
           </thead>
           <tbody>
             {% for r in g.rows %}
-            <tr data-row="{{ r.num }}" class="{% if r.sev %}row-{{ r.sev }}{% endif %}{% if r.removed %} row-removed{% endif %}"{% if r.fid is defined %} data-fid="{{ r.fid }}"{% endif %}>
+            <tr data-row="{{ r.num }}" class="{% if r.sev %}row-{{ r.sev }}{% endif %}{% if r.removed %} row-removed{% endif %}{% if r.resolved %} is-resolved{% endif %}"{% if r.fid is defined %} data-fid="{{ r.fid }}"{% endif %}>
               <th class="rownum" scope="row">{{ r.num }}{% if r.fid is defined %}<span class="mark mark-{{ r.sev or 'warning' }}" style="--i: {{ r.fid }}">{{ r.fid + 1 }}</span>{% endif %}</th>
               {% for c in r.cells %}
-              <td class="{% if c.sev %}cell-{{ c.sev }}{% endif %}{% if c.after is defined %} has-fix{% endif %}{% if c.v == '' %} is-blank{% endif %}"{% if c.fid is defined %} data-fid="{{ c.fid }}" tabindex="0"{% endif %}>
+              <td class="{% if c.sev %}cell-{{ c.sev }}{% endif %}{% if c.after is defined %} has-fix{% endif %}{% if c.v == '' %} is-blank{% endif %}{% if c.resolved %} is-resolved{% endif %}"{% if c.fid is defined %} data-fid="{{ c.fid }}" tabindex="0"{% endif %}>
                 <span class="v">{{ c.v if c.v != '' else 'empty' }}</span>{% if c.after is defined %}<span class="after">{{ c.after }}</span>{% endif %}{% if c.fid is defined %}<span class="mark mark-{{ c.sev or 'error' }}" style="--i: {{ c.fid }}" aria-hidden="true">{{ c.fid + 1 }}</span>{% endif %}
               </td>
               {% endfor %}
@@ -203,13 +203,13 @@
       <p class="visually-hidden" id="filter-status" aria-live="polite"></p>
       <ol class="finding-list" id="finding-list">
         {% for f in report.findings %}
-        <li class="finding" data-severity="{{ f.severity }}" data-fid="{{ loop.index0 }}" data-row="{{ f.row }}" data-col="{{ f.column }}" data-rule="{{ f.rule }}">
+        <li class="finding{{ ' is-resolved' if loop.index0 in (g.resolved or []) else '' }}" data-severity="{{ f.severity }}" data-fid="{{ loop.index0 }}" data-row="{{ f.row }}" data-col="{{ f.column }}" data-rule="{{ f.rule }}">
           <button type="button" class="finding-hit" aria-label="Show {{ f.severity }} at {% if f.row %}row {{ f.row }}{% else %}whole file{% endif %} in the data">
             <span class="mark mark-{{ f.severity }} is-static" aria-hidden="true">{{ loop.index }}</span>
             <span class="finding-body">
               <span class="finding-top">
                 <span class="where">{% if f.row %}Row {{ f.row }}{% else %}Whole file{% endif %}{% if f.column %}, {{ f.column }}{% endif %}</span>
-                <span class="sev sev-{{ f.severity }}">{{ f.severity|capitalize }}</span>
+                <span class="sev sev-{{ f.severity }}">{{ f.severity|capitalize }}</span><span class="fixed-tag">Fixed by auto-fix</span>
               </span>
               <span class="message f-msg">{{ f.message }}</span>
               <span class="hint"><span class="visually-hidden">How to fix it: </span><span class="f-hint">{{ f.hint }}</span></span>

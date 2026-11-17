@@ -329,6 +329,20 @@ textarea:hover { border-color: var(--ink); }
 .xray.is-cleaned .grid tr.row-removed td { background: repeating-linear-gradient(135deg, var(--sheet) 0 6px, var(--sheet-2) 6px 9px);
   color: var(--ink-2); text-decoration: line-through; }
 .xray.is-cleaned .grid tr.row-removed .rownum { text-decoration: line-through; }
+
+/* After auto-fix: what it took care of loses its problem mark, and the column
+   heading counts what is left, so a fixed cell no longer looks broken. */
+.xray.is-cleaned .when-original,
+.xray:not(.is-cleaned) .grid th .col-stat.when-cleaned,
+.xray.is-cleaned .grid th .col-stat.when-original { display: none; }
+.xray.is-cleaned .grid td.is-resolved > .mark,
+.xray.is-cleaned .grid tr.is-resolved .rownum .mark { display: none; }
+.xray.is-cleaned .grid tr.is-resolved .rownum { padding-left: 14px; }
+.grid th.is-bad .col-stat.is-done { color: var(--ok); }
+.fixed-tag { display: none; margin-left: 8px; padding: 1px 8px; border: 1px solid var(--ok); border-radius: 999px;
+  font-size: 12px; font-weight: 600; color: var(--ok); white-space: nowrap; }
+.report.is-cleaned .finding.is-resolved .fixed-tag { display: inline-block; }
+.report.is-cleaned .finding.is-resolved .finding-body > :not(.finding-top) { opacity: .55; }
 .grid td.is-focus, .grid tr.is-focus > * { animation: focus-pulse 1.5s ease-out 1; }
 .grid td.is-focus { outline: 2.5px solid var(--wine); outline-offset: -2px; z-index: 1; }
 @keyframes focus-pulse { 0%, 40% { background-color: var(--wine-soft); } }

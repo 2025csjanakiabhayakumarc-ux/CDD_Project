@@ -326,3 +326,25 @@ def test_downloads_apply_the_email_and_date_fixes_the_rules_name(client, tmp_pat
     assert ".0" not in cleaned
     changes = client.get("/download-changes").data.decode()
     assert "lowercase" in changes and "normalize date" in changes
+
+
+def test_after_autofix_view_clears_what_autofix_fixed():
+    """A fixed cell kept its red mark and "1 to fix", so the cleaned view looked unfixed."""
+    pytest.importorskip("src.autofix")
+    data = (b"emp_id,name,email,phone,join_date,salary\n"
+            b"E001,Priya Sharma,priya@company.com,9876543210,15/01/2022,55000\n"
+            b"E002,Rahul Verma,rahul@company.com,9876543211,2022-03-20,62000\n"
+            b"E003,Anita Desai,anita-bad-email,9876543212,2022-06-01,48000\n"
+            b"E002,Rahul Verma,rahul@company.com,9876543211,2022-03-20,62000\n")
+    report = service.analyze_upload("e.csv", data, [], config_path="templates_rules/employees.yaml")
+    g = report.grid
+    by_problem = {(f.row, f.column or ""): i for i, f in enumerate(report.findings)}
+    date_fid = by_problem[("2", "join_date")]
+    email_fid = by_problem[("4", "email")]
+    dup_fid = next(i for i, f in enumerate(report.findings) if f.rule == "duplicates")
+    assert date_fid in g["resolved"]        # 15/01/2022 is rewritten as 2022-01-15
+    assert dup_fid in g["resolved"]         # the repeated row is removed
+    assert email_fid not in g["resolved"]   # anita-bad-email needs a person
+    cols = {c["name"]: c for c in g["columns"]}
+    assert (cols["join_date"]["bad"], cols["join_date"]["fixed"]) == (1, 1)
+    assert (cols["email"]["bad"], cols["email"]["fixed"]) == (1, 0)

@@ -188,6 +188,8 @@
     btn.addEventListener("click", function () {
       var cleaned = btn.getAttribute("data-version") === "cleaned";
       xray.classList.toggle("is-cleaned", cleaned);
+      // The notes list sits outside the sheet; it tags the notes auto-fix takes care of.
+      report.classList.toggle("is-cleaned", cleaned);
       $$(".seg").forEach(function (b) {
         var on = b === btn;
         b.classList.toggle("is-on", on);
