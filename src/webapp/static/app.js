@@ -219,6 +219,21 @@
     if (el.tagName === "TD") el.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
   });
 
+  // Landing page: the sheet stack leans a little toward the pointer
+  var stage = $("stack-stage");
+  if (stage && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    var stack = stage.querySelector(".stack");
+    stage.addEventListener("pointermove", function (e) {
+      var r = stage.getBoundingClientRect();
+      var x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5;
+      stack.style.setProperty("--rx", (56 - y * 10).toFixed(1) + "deg");
+      stack.style.setProperty("--rz", (-32 + x * 14).toFixed(1) + "deg");
+    });
+    stage.addEventListener("pointerleave", function () {
+      stack.style.removeProperty("--rx"); stack.style.removeProperty("--rz");
+    });
+  }
+
   // Row map: jump to a row in the sheet
   $$("[data-goto-row]").forEach(function (btn) {
     btn.addEventListener("click", function () {

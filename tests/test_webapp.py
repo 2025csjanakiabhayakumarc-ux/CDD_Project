@@ -33,6 +33,12 @@ def upload(client, content, name="data.csv", **extra):
 def test_home_page_loads(client):
     response = client.get("/")
     assert response.status_code == 200
+    assert b'href="/check"' in response.data  # the landing page leads to the upload page
+
+
+def test_upload_page_loads(client):
+    response = client.get("/check")
+    assert response.status_code == 200
     assert b"Validate CSV" in response.data
 
 
@@ -180,7 +186,7 @@ def test_employees_clean_sample_scores_100_with_employees_template(monkeypatch):
 
 
 def test_upload_page_lists_rule_templates_without_server_paths(client):
-    response = client.get("/")
+    response = client.get("/check")
     assert b'value="employees"' in response.data
     assert b'value="auto"' in response.data
     assert b"templates_rules" not in response.data  # file paths stay on the server

@@ -61,6 +61,10 @@ def create_app() -> Flask:
         return render_template("index.html", rule_sets=rule_sets, error=error), status
 
     @app.get("/")
+    def home():
+        return render_template("landing.html")
+
+    @app.get("/check")
     def index():
         return upload_page()
 
