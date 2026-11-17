@@ -2,9 +2,16 @@
 
 ## Unreleased
 
+### Changed
+- **Upload page is three numbered steps** — choose your file, pick the rules, check it. "Let DataGuard choose" (auto-detect) is the default, `rules.yaml` is labelled "Student records", and the sidebar says what happens next instead of repeating the landing page.
+- **Upload limit raised from 5 MB to 20 MB** — set with `DATAGUARD_MAX_UPLOAD_MB`. A 20 MB file (about 256,000 rows) takes about 30 seconds to check.
+
 ### Fixed
 - **AI summary and rule writer could never work** — they asked for `gemini-2.0-flash`, which Google shut down on 2026-06-01, through the unmaintained `google-generativeai` package, and every failure fell back silently, so a valid key still showed "Rule-based". They now use the `google-genai` SDK and Google's `gemini-flash-latest` alias (override with `GEMINI_MODEL`), and print the real error to the terminal before falling back.
 - **The API key could be baked into the Docker image** — the Dockerfile copies the whole folder. A `.dockerignore` now leaves out `.env`, `.git` and virtualenvs, and `docker-compose.yml` passes `.env` in at run time.
+- **"Download cleaned CSV" failed for any real file** — the upload was kept in the session cookie, which browsers drop above about 4 KB, so the download said "No file to clean". The upload is now kept in a temporary folder for an hour and the cookie holds only a random id.
+- **Near-duplicate check was too slow for large files** — it compared every pair of rows in Python (about 15 minutes for 5 MB). It now scores pairs in rapidfuzz's `cdist`, lists the first 500 and counts the rest, and above 20,000 rows compares each row with its 50 neighbours in sorted order, saying so in the report.
+- **Whitespace auto-fix read every cell one at a time** — about 6 seconds on a 5 MB file; it now only touches cells it changes.
 - **Anomaly detection no longer scores code columns** — phone numbers, pincodes, account and roll numbers are labels, not measurements, so `samples/employees.csv` reported its wrong-prefix phone twice: once by `india_formats` and once as "unusual for this column". Columns named explicitly in `numeric_columns` are still scored.
 - **"Typical range" now reads correctly** — it is measured over the ordinary values instead of the whole column, and small decimals keep their decimal places. A column of rates between 0.11 and 0.15 with one 9.80 in it was described as a "typical range" reaching 3.04, and `int()` truncation turned that same column into "range 0-0".
 

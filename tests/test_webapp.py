@@ -39,7 +39,7 @@ def test_home_page_loads(client):
 def test_upload_page_loads(client):
     response = client.get("/check")
     assert response.status_code == 200
-    assert b"Validate CSV" in response.data
+    assert b"Check my file" in response.data
 
 
 def test_health_route(client):
@@ -250,3 +250,30 @@ def test_sample_links_open_a_report(monkeypatch):
     clean = client.get("/try/employees_clean")
     assert clean.status_code == 200 and b'data-total="0"' in clean.data
     assert client.get("/try/not-a-sample").status_code == 404
+
+
+def test_download_works_for_a_file_too_big_for_a_cookie(client, tmp_path, monkeypatch):
+    """The upload used to live in the session cookie; browsers drop cookies over ~4 KB."""
+    pytest.importorskip("src.autofix")
+    monkeypatch.setattr(importlib.import_module("src.webapp.app"), "UPLOAD_DIR", tmp_path)
+    rows = b"".join(b"%d,Person %d,%d\n" % (i, i, 50 + i % 50) for i in range(2000))
+    big = b"id,name,attendance\n" + rows
+    assert len(big) > 20_000
+    assert upload(client, big).status_code == 200
+    cookie = client.get_cookie("session")
+    assert cookie is not None and len(cookie.value) < 1000  # only an id, not the file
+    response = client.get("/download-cleaned")
+    assert response.status_code == 200
+    assert response.data.startswith(b"id,name,attendance")
+    assert client.get("/download-changes").status_code == 200
+
+
+def test_download_refuses_a_made_up_upload_id(client):
+    with client.session_transaction() as sess:
+        sess["upload_id"] = "../../etc/passwd"
+    assert client.get("/download-cleaned").status_code == 400
+
+
+def test_upload_limit_is_shown_on_the_page(client):
+    limit = importlib.import_module("src.webapp.app").MAX_UPLOAD_MB
+    assert f"Up to {limit} MB".encode() in client.get("/check").data

@@ -13,7 +13,7 @@
     <li>The file ends in .csv or .xlsx. In Excel or Sheets, choose <em>Save as</em> and pick CSV.</li>
     <li>It opens in Excel or Google Sheets without a warning.</li>
     <li>The first row holds the column names.</li>
-    <li>The file is not empty and is under 5 MB.</li>
+    <li>The file is not empty and is under {{ max_mb }} MB.</li>
   </ul>
   <div class="error-actions">
     <a class="btn btn-primary" href="{{ url_for('index') }}">Try another file</a>
