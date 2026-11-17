@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **Anomaly detection no longer scores code columns** — phone numbers, pincodes, account and roll numbers are labels, not measurements, so `samples/employees.csv` reported its wrong-prefix phone twice: once by `india_formats` and once as "unusual for this column". Columns named explicitly in `numeric_columns` are still scored.
+- **"Typical range" now reads correctly** — it is measured over the ordinary values instead of the whole column, and small decimals keep their decimal places. A column of rates between 0.11 and 0.15 with one 9.80 in it was described as a "typical range" reaching 3.04, and `int()` truncation turned that same column into "range 0-0".
+
 ## 1.1.0 (2026-11-16)
 
 ### New features
