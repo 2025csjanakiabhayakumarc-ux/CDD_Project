@@ -93,3 +93,46 @@ def test_end_to_end_orders_csv(tmp_path):
     assert "discount_pct" in config["range_and_format"].get("percentage_columns", [])
     assert "order_id" in config["duplicates"]["subset"]
     assert "no specific format" in explanations.get("city", "")
+
+
+# ---- what "Choose for me" must catch in the sample employee file ----
+
+def test_one_blank_in_a_small_file_still_counts_as_required():
+    df = pd.DataFrame({"name": ["A", "B", "", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O"]})
+    config, _ = infer_config(df)
+    assert "name" in config["missing_values"]["columns"]
+
+
+def test_mostly_empty_column_is_not_required():
+    df = pd.DataFrame({"notes": ["x", "", "", "", "", "y", "", "", "", ""]})
+    config, _ = infer_config(df)
+    assert "notes" not in config["missing_values"]["columns"]
+
+
+def test_phone_column_turns_on_indian_formats():
+    df = pd.DataFrame({"phone": ["9876543210", "9876543211", "5876543215", "9876543213"]})
+    config, explanations = infer_config(df)
+    assert config["india_formats"]["phone_columns"] == ["phone"]
+    assert "phone" in explanations["phone"]
+
+
+def test_unnamed_column_of_indian_mobiles_is_found_by_its_values():
+    df = pd.DataFrame({"contact_no_2": [f"98765432{i:02d}" for i in range(20)]})
+    config, _ = infer_config(df)
+    assert config["india_formats"]["phone_columns"] == ["contact_no_2"]
+
+
+def test_id_column_with_one_duplicate_is_still_an_id():
+    ids = [f"E{i:03d}" for i in range(1, 15)] + ["E001"]
+    config, _ = infer_config(pd.DataFrame({"emp_id": ids}))
+    assert config["duplicates"]["subset"] == ["emp_id"]
+
+
+def test_pincode_column_is_detected():
+    config, _ = infer_config(pd.DataFrame({"pincode": ["570008", "560001", "575001"]}))
+    assert config["india_formats"]["pincode_columns"] == ["pincode"]
+
+
+def test_plain_numbers_are_not_mistaken_for_phones():
+    config, _ = infer_config(pd.DataFrame({"salary": ["55000", "62000", "48000"]}))
+    assert "india_formats" not in config

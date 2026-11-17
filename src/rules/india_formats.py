@@ -22,6 +22,13 @@ _GSTIN_RE = re.compile(
 _IFSC_RE = re.compile(r"^[A-Z]{4}0[A-Z0-9]{6}$", re.IGNORECASE)
 
 
+def _as_text(value) -> str:
+    """The value as typed. A column with a blank cell is read as floats, which
+    turns 9876543210 into 9876543210.0, so drop that .0 before checking."""
+    raw = re.sub(r"[\s-]", "", str(value).strip())
+    return raw[:-2] if raw.endswith(".0") and raw[:-2].lstrip("+").isdigit() else raw
+
+
 def check(
     df: pd.DataFrame,
     phone_columns: list[str] | None = None,
@@ -43,7 +50,7 @@ def check(
         for row_idx, value in df[col].items():
             if _is_empty(value):
                 continue
-            raw = re.sub(r"[\s-]", "", str(value).strip())
+            raw = _as_text(value)
             if not _PHONE_RE.fullmatch(raw):
                 findings.append(
                     Finding(
@@ -62,7 +69,7 @@ def check(
         for row_idx, value in df[col].items():
             if _is_empty(value):
                 continue
-            raw = str(value).strip()
+            raw = _as_text(value)
             if not _PINCODE_RE.fullmatch(raw):
                 findings.append(
                     Finding(
