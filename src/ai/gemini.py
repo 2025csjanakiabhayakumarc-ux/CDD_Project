@@ -9,10 +9,15 @@ from __future__ import annotations
 import os
 import sys
 
-TIMEOUT_SECONDS = 8
-# Google's alias for its current Flash model, so the app keeps working when a numbered
-# model is retired. Set GEMINI_MODEL in .env to pin an exact model id instead.
-DEFAULT_MODEL = "gemini-flash-latest"
+# Even a one-word reply took 6-7 s at busy times, so 8 s fell back to "Rule-based" too often.
+TIMEOUT_SECONDS = 15
+# Google's alias for its current Flash-Lite model, so the app keeps working when a numbered
+# model is retired. Flash-Lite, not full Flash: summarising a list of problems is a light
+# job, and on 2026-11-17 the full Flash models were answering "high demand" (503) or
+# timing out while Flash-Lite replied. Set GEMINI_MODEL in .env to pin a model instead.
+DEFAULT_MODEL = "gemini-flash-lite-latest"
+# The -latest aliases exist only on v1beta; the SDK's default v1 answers 404 for them.
+API_VERSION = "v1beta"
 
 
 def model_name() -> str:
@@ -24,7 +29,8 @@ def generate(key: str, prompt: str) -> str:
     from google import genai
     from google.genai import types
 
-    client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=TIMEOUT_SECONDS * 1000))
+    client = genai.Client(api_key=key, http_options=types.HttpOptions(
+        api_version=API_VERSION, timeout=TIMEOUT_SECONDS * 1000))
     response = client.models.generate_content(model=model_name(), contents=prompt)
     text = (response.text or "").strip()
     if not text:

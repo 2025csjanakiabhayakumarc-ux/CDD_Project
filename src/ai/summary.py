@@ -49,12 +49,15 @@ def _build_prompt(report: Report) -> str:
         "Give a 3-4 sentence plain-English summary of the data quality, then list "
         "the top 3 things to fix first (one sentence each). "
         "Format: first the summary paragraph, then a blank line, then each fix on "
-        "its own line starting with a number and period (1. 2. 3.)."
+        "its own line starting with a number and period (1. 2. 3.). "
+        "Write plain text: no Markdown, no backticks, no asterisks."
     )
 
 
 def _call_gemini(key: str, prompt: str) -> dict:
-    text = gemini.generate(key, prompt)
+    # The page shows this as plain text, so Markdown the model adds anyway would show up
+    # literally, as `employees.csv` or **row 4**.
+    text = gemini.generate(key, prompt).replace("`", "").replace("**", "")
 
     parts = text.split("\n\n", 1)
     summary = parts[0].strip()
