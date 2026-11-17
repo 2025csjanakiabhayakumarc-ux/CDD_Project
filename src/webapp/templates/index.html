@@ -5,8 +5,8 @@
 {% block content %}
 <div class="upload-layout">
   <section class="upload-main" aria-labelledby="upload-title">
-    <h1 id="upload-title">Check a spreadsheet before anyone relies on it.</h1>
-    <p class="lead">DataGuard reads every row against your rules, marks each bad cell where it sits, and hands back a cleaned copy with a record of what changed.</p>
+    <h1 id="upload-title">Check a file</h1>
+    <p class="lead">Three steps. You'll see every problem marked on your data, then you can download a cleaned copy.</p>
 
     {% if error %}
     <div class="banner banner-error" role="alert">
@@ -15,85 +15,92 @@
     {% endif %}
 
     <form id="upload-form" method="post" action="{{ url_for('validate') }}" enctype="multipart/form-data">
-      <div class="sheet upload-sheet">
-        <label class="dropzone" id="dropzone" for="file">
-          <input class="visually-hidden" id="file" name="file" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
-          <span class="blank-sheet">
-            <span class="bs-head bs-corner" aria-hidden="true"></span>
-            {% for letter in ['A', 'B', 'C', 'D', 'E', 'F'] %}<span class="bs-head" aria-hidden="true">{{ letter }}</span>{% endfor %}
-            {% for n in range(1, 8) %}
-            <span class="bs-num" aria-hidden="true">{{ n }}</span>
-            {% for _ in range(6) %}<span class="bs-cell" aria-hidden="true"></span>{% endfor %}
-            {% endfor %}
-            <span class="drop-copy">
-              <span class="dropzone-title" id="drop-title">Drop a CSV or Excel file on this sheet</span>
-              <span class="dropzone-sub" id="drop-sub">or <span class="link-text">choose one from your computer</span>. Up to 5 MB.</span>
-              <span class="fill-handle" aria-hidden="true"></span>
-            </span>
-          </span>
-        </label>
+      <ol class="form-steps">
 
-        <div class="file-peek" id="file-peek" hidden>
-          <div class="table-scroll"><table class="grid peek-table" id="peek-table"></table></div>
-          <p class="peek-foot"><span id="peek-name" hidden></span><span id="peek-size"></span>, first rows shown.</p>
-        </div>
-      </div>
+        <li class="form-step" id="step-file">
+          <h2 class="step-title"><span class="step-num" aria-hidden="true">1</span>Choose your file</h2>
+          <div class="sheet upload-sheet">
+            <label class="dropzone" id="dropzone" for="file">
+              <input class="visually-hidden" id="file" name="file" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+              <span class="blank-sheet">
+                <span class="bs-head bs-corner" aria-hidden="true"></span>
+                {% for letter in ['A', 'B', 'C', 'D', 'E', 'F'] %}<span class="bs-head" aria-hidden="true">{{ letter }}</span>{% endfor %}
+                {% for n in range(1, 8) %}
+                <span class="bs-num" aria-hidden="true">{{ n }}</span>
+                {% for _ in range(6) %}<span class="bs-cell" aria-hidden="true"></span>{% endfor %}
+                {% endfor %}
+                <span class="drop-copy">
+                  <span class="dropzone-title" id="drop-title">Drag a CSV or Excel file here</span>
+                  <span class="dropzone-sub" id="drop-sub"><span class="pick-btn">Choose a file</span> <span class="drop-limit">Up to {{ max_mb }} MB</span></span>
+                  <span class="fill-handle" aria-hidden="true"></span>
+                </span>
+              </span>
+            </label>
 
-      <div class="control-row">
-        <div class="field">
-          <label class="field-label" for="template">Rules to check against</label>
-          <select id="template" name="template">
-            {% for s in rule_sets %}
-            <option value="{{ s.value }}"{% if loop.first %} selected{% endif %}>{{ s.label }}</option>
+            <div class="file-peek" id="file-peek" hidden>
+              <div class="table-scroll"><table class="grid peek-table" id="peek-table"></table></div>
+              <p class="peek-foot"><span id="peek-name" hidden></span><span id="peek-size"></span>. These are the first rows of your file.</p>
+            </div>
+          </div>
+          <p class="samples">No file to hand? Try a sample:
+            <a href="{{ url_for('try_sample', name='employees') }}">employees.csv</a> (has 5 problems) or
+            <a href="{{ url_for('try_sample', name='employees_clean') }}">employees_clean.csv</a> (has none).</p>
+        </li>
+
+        <li class="form-step" id="step-rules">
+          <h2 class="step-title"><span class="step-num" aria-hidden="true">2</span><label for="template">Pick the rules</label></h2>
+          <select id="template" name="template" aria-describedby="check-summary">
+            {% for s in rule_sets if s.value == 'auto' %}
+            <option value="auto" selected>Let DataGuard choose (recommended)</option>
             {% endfor %}
+            <optgroup label="Ready-made rule sets">
+              {% for s in rule_sets if s.value != 'auto' %}
+              <option value="{{ s.value }}">{{ s.label }}</option>
+              {% endfor %}
+            </optgroup>
           </select>
-        </div>
-        <button class="btn btn-primary btn-lg" type="submit" id="submit-btn">
-          <span class="btn-label">Validate CSV</span>
-          <span class="spinner" aria-hidden="true"></span>
-        </button>
-      </div>
-      <p class="helper" id="submit-help" aria-live="polite">Choose a file to continue</p>
+          <p class="helper" id="check-summary"></p>
+          <details class="options rules-peek">
+            <summary>What these rules check</summary>
+            <ul class="rule-list" id="check-rules"></ul>
+            <p class="expects" id="check-columns"></p>
+          </details>
+          <details class="options">
+            <summary>Add columns that must be in the file</summary>
+            <label class="field-label" for="required">Column names, separated by commas</label>
+            <input id="required" name="required" type="text" placeholder="student_id, name, attendance" autocomplete="off">
+          </details>
+          {% if ai_on %}
+          <details class="options">
+            <summary>Or describe your rules in plain English (AI)</summary>
+            <label class="field-label" for="ai_rules">For example: phone must be an Indian mobile, email required, attendance 0 to 100</label>
+            <textarea id="ai_rules" name="ai_rules" rows="3" placeholder="phone must be an Indian mobile, email required, salary must be positive"></textarea>
+            <p class="helper">Only this sentence is sent to Gemini, not your file. If the AI can't write valid rules, the rules picked above are used.</p>
+          </details>
+          {% endif %}
+        </li>
 
-      <details class="options">
-        <summary>Use my own required columns</summary>
-        <label class="field-label" for="required">Column names, separated by commas</label>
-        <input id="required" name="required" type="text" placeholder="student_id, name, attendance" autocomplete="off">
-      </details>
-
-      {% if ai_on %}
-      <details class="options">
-        <summary>Describe your rules in plain English (AI)</summary>
-        <label class="field-label" for="ai_rules">For example: phone must be an Indian mobile, email required, attendance 0 to 100</label>
-        <textarea id="ai_rules" name="ai_rules" rows="3" placeholder="phone must be an Indian mobile, email required, salary must be positive"></textarea>
-        <p class="helper">Only this sentence is sent to Gemini, not your file. If the AI can't write valid rules, the rules chosen above are used.</p>
-      </details>
-      {% endif %}
+        <li class="form-step" id="step-go">
+          <h2 class="step-title"><span class="step-num" aria-hidden="true">3</span>Check it</h2>
+          <button class="btn btn-primary btn-lg" type="submit" id="submit-btn">
+            <span class="btn-label">Check my file</span>
+            <span class="spinner" aria-hidden="true"></span>
+          </button>
+          <p class="helper" id="submit-help" aria-live="polite">Choose a file in step 1 first.</p>
+        </li>
+      </ol>
     </form>
-
-    <p class="samples">No file to hand? Open
-      <a href="{{ url_for('try_sample', name='employees') }}">employees.csv</a> (15 rows, 5 problems) or
-      <a href="{{ url_for('try_sample', name='employees_clean') }}">employees_clean.csv</a> (the fixed copy).</p>
   </section>
 
-  <aside class="upload-side">
-    <section aria-labelledby="checks-title">
-      <h2 id="checks-title" class="side-title">What these rules check</h2>
-      <p class="muted" id="check-summary"></p>
-      <ul class="rule-list" id="check-rules"></ul>
-      <p class="expects" id="check-columns"></p>
-    </section>
-
-    <section aria-labelledby="why-title">
-      <h2 id="why-title" class="side-title">Why not paste it into a chatbot?</h2>
-      <dl class="why">
-        <dt>Personal data stays here</dt>
-        <dd>Names, phone numbers and dates of birth are checked by this app. {% if ai_on %}The AI summary only sees column names and the problems found, never the whole file.{% else %}Nothing is sent to an AI service.{% endif %}</dd>
-        <dt>Same file, same answer</dt>
-        <dd>The rules live in a YAML file, so every run checks the same things the same way.</dd>
-        <dt>Every row, every change on record</dt>
-        <dd>All rows are checked, and the cleaned file comes with a list of exactly what was changed.</dd>
-      </dl>
+  <aside class="upload-side" aria-labelledby="next-title">
+    <section>
+      <h2 id="next-title" class="side-title">What happens next</h2>
+      <ol class="next-list">
+        <li><strong>Every row is checked</strong><span>against the rules you picked. Small files take a second or two, and the largest up to half a minute.</span></li>
+        <li><strong>You see your data, marked up</strong><span>Each problem gets a numbered mark on its cell and a note saying how to fix it.</span></li>
+        <li><strong>You download a cleaned copy</strong><span>Safe fixes are applied for you, with a list of every change. Anything that needs a person is left alone.</span></li>
+      </ol>
+      <p class="side-note">Your file is checked by this app and kept on this computer for an hour, so you can download the cleaned copy. Then it is deleted. {% if ai_on %}The AI summary sees only column names and the problems found, never the whole file.{% else %}Nothing is sent to an AI service.{% endif %}</p>
     </section>
   </aside>
 </div>
