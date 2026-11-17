@@ -25,6 +25,7 @@ _DATE_FORMATS = [
 _PCT_KEYWORDS = {"percent", "pct", "%", "attendance", "score"}
 _ID_KEYWORDS = {"id", "no", "code", "roll"}
 _PHONE_KEYWORDS = {"phone", "mobile", "contact", "whatsapp", "cell"}
+_NAME_KEYWORDS = {"name"}
 _PINCODE_KEYWORDS = {"pincode", "pin_code", "zip", "postal"}
 _INDIAN_MOBILE_RE = re.compile(r"^(?:\+91|91|0)?[6-9]\d{9}$")
 _DIGITS_RE = re.compile(r"^\+?\d{10,13}$")
@@ -65,6 +66,8 @@ def infer_config(df: pd.DataFrame) -> tuple[dict, dict[str, str]]:
     id_cols: list[str] = []
     missing_cols: list[str] = []
     phone_cols: list[str] = []
+    numeric_cols: list[str] = []
+    name_cols: list[str] = []
     pincode_cols: list[str] = []
 
     for col in df.columns:
@@ -105,6 +108,16 @@ def infer_config(df: pd.DataFrame) -> tuple[dict, dict[str, str]]:
             id_cols.append(col)
             continue
 
+        if _is_numeric(non_empty, total):
+            numeric_cols.append(col)
+            explanations[col] = "numbers: checked for unusual values"
+            continue
+
+        if any(kw in col.lower() for kw in _NAME_KEYWORDS):
+            name_cols.append(col)
+            explanations[col] = "names: checked for near-duplicate rows"
+            continue
+
         explanations[col] = "no specific format detected"
 
     for col in df.columns:
@@ -129,6 +142,13 @@ def infer_config(df: pd.DataFrame) -> tuple[dict, dict[str, str]]:
     if pct_cols:
         rf["percentage_columns"] = pct_cols
 
+    # The two machine-learning checks: unusual numbers, and rows that are almost
+    # the same person or item (matched on names, plus email when there is one).
+    if numeric_cols:
+        config["anomalies"] = {"numeric_columns": numeric_cols}
+    if name_cols:
+        config["near_duplicates"] = {"key_columns": name_cols + email_cols[:1]}
+
     india: dict[str, list[str]] = {}
     if phone_cols:
         india["phone_columns"] = phone_cols
@@ -138,6 +158,11 @@ def infer_config(df: pd.DataFrame) -> tuple[dict, dict[str, str]]:
         config["india_formats"] = india
 
     return config, explanations
+
+
+def _is_numeric(sample: pd.Series, total: int) -> bool:
+    numbers = pd.to_numeric(sample.str.replace(",", "", regex=False), errors="coerce")
+    return numbers.notna().sum() / total >= MATCH_THRESHOLD
 
 
 def _compact(sample: pd.Series) -> pd.Series:

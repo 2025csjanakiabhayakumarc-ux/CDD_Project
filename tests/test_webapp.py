@@ -129,7 +129,8 @@ def test_real_engine_uses_rules_yaml_settings(real_engine):
 
 def test_real_engine_says_when_a_rule_has_no_settings(real_engine):
     report = service.analyze_upload("t.csv", b"name,age\nBob,1\n")
-    assert any("required_columns" in note for note in report.notes)
+    assert "required_columns" in report.skipped  # greyed out on the page, not a warning banner
+    assert not any("required_columns" in note for note in report.notes)
     assert "required_columns" not in report.rules_run
 
 
@@ -295,3 +296,14 @@ def test_ai_mode_falls_back_to_choosing_rules_from_the_columns(client):
 def test_rule_set_mode_uses_the_picked_template(client):
     response = upload(client, b"name,email\nAsha,asha@example.com\n", rule_mode="set", template="employees")
     assert "Employees" in response.get_data(as_text=True)
+
+
+def test_checks_that_cannot_run_are_one_quiet_line_not_banners():
+    from src.webapp.app import create_app
+    client = create_app().test_client()  # the real engine, as on a laptop
+    sample = pathlib.Path(__file__).resolve().parent.parent / "samples" / "event_registrations.csv"
+    page = upload(client, sample.read_bytes(), name="event_registrations.csv",
+                  rule_mode="set", template="default").get_data(as_text=True)
+    assert "banner-warning" not in page
+    assert "Duplicate rows didn&#39;t run" in page or "Duplicate rows didn't run" in page
+    assert 'marked "Not run" have no settings' in page or "marked &#34;Not run&#34; have no settings" in page

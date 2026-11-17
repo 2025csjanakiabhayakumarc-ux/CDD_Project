@@ -90,6 +90,10 @@ class Report:
     total: int = 0
     score: int = 100
     rules_run: list = field(default_factory=list)
+    # Checks the chosen rules had no settings for. Shown greyed out, not as warnings.
+    skipped: list = field(default_factory=list)
+    # Checks that could not run because a column they are set up for is missing.
+    skipped_missing: list = field(default_factory=list)
     notes: list = field(default_factory=list)
     engine: str = "demo"
     error: str = ""
@@ -507,11 +511,11 @@ def _call_rule(fn, name, df, settings, required):
         if not kwargs.get("subset"):
             kwargs.pop("subset", None)  # an empty list means "check every column"
     elif not any(kwargs.values()):
-        return None, f"The {name} check was skipped because rules.yaml has no settings for it."
+        return None, None  # nothing to check with these rules; listed in report.skipped
     try:
         return _to_findings(fn(df, **kwargs), name), ""
     except KeyError:
-        return None, f"The {name} check was skipped because a column named in rules.yaml is not in your file."
+        return None, "missing-column"  # listed in report.skipped_missing
     except Exception as exc:  # noqa: BLE001 - a crashing rule must not break the page
         return None, f"The {name} check could not run: {exc}. Update service.py to match its inputs."
 
@@ -553,6 +557,11 @@ def _run_engine(engine, filename, data, required, report, config_path=None, auto
         findings: list[UiFinding] = []
         for name, fn in engine["rules"]:
             found, note = _call_rule(fn, name, df, config.get(name), required)
+            if note is None:
+                report.skipped.append(name)
+            elif note == "missing-column":
+                report.skipped_missing.append(name)
+                note = ""
             if note:
                 report.notes.append(note)
             if found is None:

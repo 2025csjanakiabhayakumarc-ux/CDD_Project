@@ -12,7 +12,7 @@
   'duplicates': 'Duplicate rows',
   'range_and_format': 'Ranges and formats',
   'india_formats': 'Indian formats',
-  'anomalies': 'Unusual rows (ML)',
+  'anomalies': 'Unusual values (ML)',
   'near_duplicates': 'Near-duplicates (ML)'
 } %}
 
@@ -23,7 +23,7 @@
   <header class="report-head">
     <div>
       <h1 class="file-title">{{ report.filename }}</h1>
-      <p class="meta">{{ report.rows }} row{{ '' if report.rows == 1 else 's' }}, {{ report.columns|length }} column{{ '' if report.columns|length == 1 else 's' }}, checked with {{ rule_label or rule_source }}{% if report.engine == 'demo' %} (demo checker){% endif %}</p>
+      <p class="meta">{{ report.rows }} row{{ '' if report.rows == 1 else 's' }}, {{ report.columns|length }} column{{ '' if report.columns|length == 1 else 's' }}, {% if report.auto_detect %}rules chosen from your columns{% else %}checked with the {{ rule_label or rule_source }} rules{% endif %}{% if report.engine == 'demo' %} (demo checker){% endif %}</p>
     </div>
     <div class="report-actions">
       <a class="btn btn-quiet" href="{{ url_for('index') }}">New file</a>
@@ -34,43 +34,84 @@
     </div>
   </header>
 
-  {# ---------------- Verdict ---------------- #}
+  {# ---------------- Summary: verdict, score, checks, and the plain-English summary ---------------- #}
   {% set show_ai = ai_summary and report.total %}
-  <section class="verdict {{ 'is-clear' if report.total == 0 else ('is-bad' if errors else 'is-warn') }}{{ ' has-ai' if show_ai }}" aria-label="Validation Summary">
-    <div class="verdict-main">
-    <p class="verdict-line">
-      {% if report.total == 0 %}
-        <strong>All clear.</strong> Every one of the {{ report.rows }} row{{ '' if report.rows == 1 else 's' }} passed. This file is ready to use.
-      {% else %}
-        <strong>{{ report.valid_rows }} of {{ report.rows }} rows are clean.</strong>
-        {% if errors %}{{ errors }} error{{ '' if errors == 1 else 's' }} must be fixed{% endif %}{% if errors and warnings %} and {% endif %}{% if warnings %}{{ warnings }} warning{{ ' is' if warnings == 1 else 's are' }} worth a look{% endif %}.
-      {% endif %}
-    </p>
+  {% set state = 'is-clear' if report.total == 0 else ('is-bad' if errors else 'is-warn') %}
+  {% set tone = 'ok' if report.score >= 90 else ('warn' if report.score >= 60 else 'err') %}
+  <section class="summary {{ state }}{{ ' has-ai' if show_ai }}" aria-label="Validation Summary">
+    <div class="sheet summary-card verdict {{ state }}">
+      <div class="summary-top">
+        <div class="verdict-main">
+          <p class="verdict-line">
+            {% if report.total == 0 %}
+              <strong>All clear.</strong> Every one of the {{ report.rows }} row{{ '' if report.rows == 1 else 's' }} passed. This file is ready to use.
+            {% else %}
+              <strong>{{ report.valid_rows }} of {{ report.rows }} rows are clean.</strong>
+              {% if errors %}{{ errors }} error{{ '' if errors == 1 else 's' }} must be fixed{% endif %}{% if errors and warnings %} and {% endif %}{% if warnings %}{{ warnings }} warning{{ ' is' if warnings == 1 else 's are' }} worth a look{% endif %}.
+            {% endif %}
+          </p>
 
-    {% if g and g.rows %}
-    <div class="rowmap-wrap">
-      <div class="rowmap-box" style="--n: {{ g.rows|length }}">
-      <div class="rowmap" role="group" aria-label="Map of rows. Marked rows have a problem.">
-        {% for r in g.rows %}
-          {% set sevs = r.cells|selectattr('sev')|map(attribute='sev')|list %}
-          {% set worst = 'error' if ('error' in sevs or r.sev == 'error') else ('warning' if (sevs or r.sev) else '') %}
-          <button type="button" class="rowmap-seg {{ 'is-' + worst if worst else '' }}" data-goto-row="{{ r.num }}"
-                  title="Row {{ r.num }}{{ ': ' + worst if worst else ': clean' }}"><span class="visually-hidden">Row {{ r.num }}, {{ worst or 'clean' }}</span></button>
+          {% if g and g.rows %}
+          <div class="rowmap-wrap">
+            <div class="rowmap-box" style="--n: {{ g.rows|length }}">
+            <div class="rowmap" role="group" aria-label="Map of rows. Marked rows have a problem.">
+              {% for r in g.rows %}
+                {% set sevs = r.cells|selectattr('sev')|map(attribute='sev')|list %}
+                {% set worst = 'error' if ('error' in sevs or r.sev == 'error') else ('warning' if (sevs or r.sev) else '') %}
+                <button type="button" class="rowmap-seg {{ 'is-' + worst if worst else '' }}" data-goto-row="{{ r.num }}"
+                        title="Row {{ r.num }}{{ ': ' + worst if worst else ': clean' }}"><span class="visually-hidden">Row {{ r.num }}, {{ worst or 'clean' }}</span></button>
+              {% endfor %}
+            </div>
+            <p class="rowmap-key"><span>Row {{ g.rows[0].num }}</span><span>Row {{ g.rows[-1].num }}</span></p>
+            </div>
+            <p class="rowmap-legend">One block per row{% if errors %}, <span class="key key-err"></span>error{% endif %}{% if warnings %}, <span class="key key-warn"></span>warning{% endif %}. Select a block to jump to it.</p>
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="score score-{{ tone }}">
+          <svg class="score-ring" viewBox="0 0 120 120" aria-hidden="true">
+            <circle cx="60" cy="60" r="52" pathLength="100" class="ring-track"/>
+            <circle cx="60" cy="60" r="52" pathLength="100" class="ring-fill" style="stroke-dasharray: {{ report.score }} 100"/>
+          </svg>
+          <p class="score-num"><span>{{ report.score }}</span><span class="visually-hidden"> out of 100</span></p>
+          <details class="how">
+            <summary>Health score</summary>
+            <p>Start at 100. Take off the percent of rows with a problem, and 10 for each problem that affects the whole file, such as a missing column.</p>
+          </details>
+        </div>
+      </div>
+
+      <ul class="checks rule-line" aria-label="Checks">
+        {% for name in all_rules %}
+          {% if name in report.rules_run %}
+            {% set n = report.rule_counts.get(name, 0) %}
+            {% set rule_errors = report.findings|selectattr('rule', 'eq', name)|selectattr('severity', 'eq', 'error')|list %}
+            {% set st = 'is-pass' if n == 0 else ('is-fail' if rule_errors else 'is-warn') %}
+            <li class="check {{ st }}" data-rule="{{ name }}" title="{{ name }}">
+              <span class="check-icon" aria-hidden="true">{% if n == 0 %}<svg viewBox="0 0 16 16" width="12" height="12"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>{% else %}{{ n }}{% endif %}</span>
+              <span class="check-text"><span class="check-name">{{ rule_names.get(name, name) }}</span>
+              <span class="rule-result">{% if n == 0 %}Passed{% else %}{{ n }} found{% endif %}</span></span>
+            </li>
+          {% else %}
+            <li class="check is-off{{ ' is-missing' if name in report.skipped_missing }}" data-rule="{{ name }}" title="{{ name }}">
+              <span class="check-icon" aria-hidden="true"><svg viewBox="0 0 16 16" width="12" height="12"><path d="M4 8h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+              <span class="check-text"><span class="check-name">{{ rule_names.get(name, name) }}</span>
+              <span class="rule-result">Not run</span></span>
+            </li>
+          {% endif %}
         {% endfor %}
-      </div>
-      <p class="rowmap-key"><span>Row {{ g.rows[0].num }}</span><span>Row {{ g.rows[-1].num }}</span></p>
-      </div>
-      <p class="rowmap-legend">One block per row{% if errors %}, <span class="key key-err"></span>error{% endif %}{% if warnings %}, <span class="key key-warn"></span>warning{% endif %}. Select a block to jump to that row.</p>
-    </div>
-    {% endif %}
-    <details class="how">
-        <summary>Health score {{ report.score }} out of 100</summary>
-        <p>Start at 100. Take off the percent of rows with a problem, and 10 for each problem that affects the whole file, such as a missing column.</p>
-      </details>
+      </ul>
+      {% if report.skipped or report.skipped_missing %}
+      <p class="checks-note">
+        {%- if report.skipped_missing %}{% for n in report.skipped_missing %}{{ rule_names.get(n, n) }}{{ ', ' if not loop.last }}{% endfor %} didn't run because {{ 'a column it is' if report.skipped_missing|length == 1 else 'columns they are' }} set up for isn't in this file. {% endif %}
+        {%- if report.skipped %}{% if report.auto_detect %}{{ "The other checks" if report.skipped_missing else "Checks" }} marked "Not run" don't fit the columns in this file.{% else %}{{ "The other checks" if report.skipped_missing else "Checks" }} marked "Not run" have no settings in these rules. "Choose for me" on the upload page runs every check that fits your columns.{% endif %}{% endif -%}
+      </p>
+      {% endif %}
     </div>
 
     {% if show_ai %}
-    <aside class="ai-note" aria-labelledby="ai-title">
+    <aside class="sheet ai-note{{ ' is-gemini' if ai_summary.ai }}" aria-labelledby="ai-title">
       <div class="ai-note-head">
         <h2 id="ai-title" class="side-title">In short</h2>
         {% if ai_summary.ai %}<span class="ai-badge"><svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><path d="M6 0c.4 3.2 2.8 5.6 6 6-3.2.4-5.6 2.8-6 6-.4-3.2-2.8-5.6-6-6 3.2-.4 5.6-2.8 6-6Z" fill="currentColor"/></svg>Written by Gemini</span>
@@ -78,27 +119,11 @@
       </div>
       <p>{{ ai_summary.summary }}</p>
       {% if ai_summary.top_fixes %}
-      <ol class="ai-fixes" aria-label="Fix these first">{% for fix in ai_summary.top_fixes %}<li>{{ fix }}</li>{% endfor %}</ol>
+      <h3 class="ai-sub">Fix these first</h3>
+      <ol class="ai-fixes">{% for fix in ai_summary.top_fixes %}<li>{{ fix }}</li>{% endfor %}</ol>
       {% endif %}
     </aside>
     {% endif %}
-
-    <div class="verdict-foot">
-      <ul class="rule-line" aria-label="Rules checked">
-        {% for name in all_rules %}
-          {% if name in report.rules_run %}
-            {% set n = report.rule_counts.get(name, 0) %}
-            {% set rule_errors = report.findings|selectattr('rule', 'eq', name)|selectattr('severity', 'eq', 'error')|list %}
-            <li class="{{ 'is-pass' if n == 0 else ('is-fail' if rule_errors else 'is-warn') }}" data-rule="{{ name }}" title="{{ name }}">
-              {{ rule_names.get(name, name) }}
-              <span class="rule-result">{% if n == 0 %}passed{% else %}{{ n }} found{% endif %}</span>
-            </li>
-          {% else %}
-            <li class="is-off" data-rule="{{ name }}" title="{{ name }}: this template has no settings for it">{{ rule_names.get(name, name) }} <span class="rule-result">skipped</span></li>
-          {% endif %}
-        {% endfor %}
-      </ul>
-    </div>
   </section>
 
   {% for note in report.notes %}<div class="banner banner-warning" role="status">{{ note }}</div>{% endfor %}
