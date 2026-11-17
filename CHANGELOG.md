@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 (2026-11-17)
+
+### New features
+- **Landing page** — a home page at `/` with a layered 3D sheet in the hero (your file, what is wrong, the cleaned copy), what each check catches, and how it works. The upload page moved to `/check`.
+- **Marked-up sheet report** — the report shows your data as a sheet with each problem marked on its cell and a numbered note beside it, a row map to jump to any row, and an Original / After auto-fix switch. Burgundy theme with dark mode.
+- **Gemini summary and plain-English rules work again** — on Google's current SDK and Flash-Lite model, with real errors shown in the terminal (details under Fixed).
 
 ### Changed
 - **Upload page is one card** — the file, how to check it, and the button, top to bottom. How to check it is three choices side by side: "Choose for me" (auto-detect, the default), "A ready-made rule set", and "Describe it" with Gemini, so the AI option is no longer hidden behind a link. The side panel lists the checks for whatever is chosen, including the two machine-learning checks.
