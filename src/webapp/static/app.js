@@ -23,7 +23,9 @@
     missing_values: "No blank cells in required fields",
     duplicates: "No repeated rows (reported as a warning)",
     range_and_format: "Emails, dates and numbers are well formed and in range",
-    india_formats: "Indian mobile numbers and other Indian formats you configure"
+    india_formats: "Indian mobile numbers and other Indian formats you configure",
+    anomalies: "Numbers far outside what the rest of the column holds (machine learning)",
+    near_duplicates: "Rows that are almost the same, such as a name spelt two ways (machine learning)"
   };
 
   var RULE_NAME = {
@@ -31,7 +33,9 @@
     missing_values: "Missing values",
     duplicates: "Duplicate rows",
     range_and_format: "Ranges and formats",
-    india_formats: "Indian formats"
+    india_formats: "Indian formats",
+    anomalies: "Unusual values",
+    near_duplicates: "Near-duplicates"
   };
 
   var form = $("upload-form");
@@ -41,11 +45,22 @@
     var sets = [];
     try { sets = JSON.parse(setsEl ? setsEl.textContent : "[]"); } catch (e) { sets = []; }
 
+    var modeOf = function () {
+      var on = form.querySelector('input[name="rule_mode"]:checked');
+      return on ? on.value : "auto";
+    };
+
     var showRules = function () {
-      var set = sets.filter(function (s) { return s.value === select.value; })[0];
-      if (!set) return;
+      var mode = modeOf();
       var list = $("check-rules"), tags = $("check-columns"), summary = $("check-summary");
-      list.innerHTML = "";
+      list.innerHTML = ""; tags.textContent = "";
+      if (mode === "ai") {
+        summary.textContent = "Gemini writes the checks from your sentence. The report shows the rules it wrote, so you can see exactly what was checked.";
+        return;
+      }
+      var key = mode === "auto" ? "auto" : select.value;
+      var set = sets.filter(function (s) { return s.value === key; })[0];
+      if (!set) return;
       set.rules.forEach(function (r) {
         var li = document.createElement("li");
         li.innerHTML = '<strong class="r"></strong><span class="d"></span>';
@@ -55,17 +70,26 @@
         list.appendChild(li);
       });
       summary.textContent = set.value === "auto"
-        ? "DataGuard looks at your column names and picks the rules that fit."
-        : set.rules.length + " rule" + (set.rules.length === 1 ? "" : "s") + " from " + set.source + ".";
+        ? "DataGuard reads your column names and picks from these checks."
+        : set.rules.length + " check" + (set.rules.length === 1 ? "" : "s") + " from " + set.source + ".";
       tags.textContent = set.columns.length ? "Expects the columns " + set.columns.join(", ") + "." : "";
     };
-    if (select) { select.addEventListener("change", showRules); showRules(); }
+
+    // Only the panel for the chosen mode is shown, and only its fields are sent.
+    var applyMode = function () {
+      var mode = modeOf();
+      $$(".mode-panel", form).forEach(function (p) { p.hidden = p.dataset.for !== mode; });
+      var ai = $("ai_rules");
+      if (ai) ai.disabled = mode !== "ai";
+      showRules();
+    };
+    $$('input[name="rule_mode"]', form).forEach(function (r) { r.addEventListener("change", applyMode); });
+    if (select) select.addEventListener("change", showRules);
+    applyMode();
 
     var setReady = function (ready) {
       submit.disabled = !ready;
-      help.textContent = ready ? "Ready. Most files take a few seconds." : "Choose a file in step 1 first.";
-      var step = $("step-file");
-      if (step) step.classList.toggle("is-done", ready);
+      help.textContent = ready ? "Ready. Most files take a few seconds." : "Choose a file first.";
     };
     setReady(false);
 
@@ -140,7 +164,10 @@
       if (!input.files || !input.files.length) { e.preventDefault(); setReady(false); return; }
       submit.classList.add("is-busy");
       submit.querySelector(".btn-label").textContent = "Checking…";
-      help.textContent = "Checking every row against " + (select.options[select.selectedIndex] || {}).text + ".";
+      var mode = modeOf();
+      help.textContent = mode === "ai" ? "Asking Gemini for rules, then checking every row."
+        : mode === "auto" ? "Choosing the rules and checking every row."
+        : "Checking every row against " + (select.options[select.selectedIndex] || {}).text + ".";
     });
     // Coming back with the browser's Back button must not leave the button stuck.
     window.addEventListener("pageshow", function () {
@@ -161,6 +188,8 @@
     btn.addEventListener("click", function () {
       var cleaned = btn.getAttribute("data-version") === "cleaned";
       xray.classList.toggle("is-cleaned", cleaned);
+      // The notes list sits outside the sheet; it tags the notes auto-fix takes care of.
+      report.classList.toggle("is-cleaned", cleaned);
       $$(".seg").forEach(function (b) {
         var on = b === btn;
         b.classList.toggle("is-on", on);

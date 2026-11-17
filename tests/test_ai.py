@@ -166,7 +166,7 @@ def test_rule_writer_failure_is_printed(monkeypatch, capsys):
 def test_model_comes_from_env_or_the_current_flash_alias(monkeypatch):
     from src.ai import gemini
     monkeypatch.delenv("GEMINI_MODEL", raising=False)
-    assert gemini.model_name() == "gemini-flash-latest"
+    assert gemini.model_name() == "gemini-flash-lite-latest"
     monkeypatch.setenv("GEMINI_MODEL", "  pinned-model  ")
     assert gemini.model_name() == "pinned-model"
 
@@ -199,3 +199,20 @@ def test_report_page_shows_the_ai_summary(monkeypatch):
     assert "Written by Gemini" in page
     assert "Two problems." in page
     assert "Rule-based" not in page
+
+
+def test_fallback_wording_has_no_bracketed_plurals(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    result = summarise(_report_with_findings())
+    text = " ".join([result["summary"], *result["top_fixes"]])
+    assert "(s)" not in text
+    assert "1 warning" in result["summary"]
+
+
+def test_summary_strips_markdown_the_model_adds(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    reply = "The `employees.csv` file has **4 errors**.\n\n1. Fix `anita-bad-email` in row 4."
+    with patch("src.ai.gemini.generate", return_value=reply):
+        result = summarise(_report_with_findings())
+    assert result["summary"] == "The employees.csv file has 4 errors."
+    assert result["top_fixes"] == ["Fix anita-bad-email in row 4."]

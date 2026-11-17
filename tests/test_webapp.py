@@ -129,7 +129,8 @@ def test_real_engine_uses_rules_yaml_settings(real_engine):
 
 def test_real_engine_says_when_a_rule_has_no_settings(real_engine):
     report = service.analyze_upload("t.csv", b"name,age\nBob,1\n")
-    assert any("required_columns" in note for note in report.notes)
+    assert "required_columns" in report.skipped  # greyed out on the page, not a warning banner
+    assert not any("required_columns" in note for note in report.notes)
     assert "required_columns" not in report.rules_run
 
 
@@ -277,3 +278,73 @@ def test_download_refuses_a_made_up_upload_id(client):
 def test_upload_limit_is_shown_on_the_page(client):
     limit = importlib.import_module("src.webapp.app").MAX_UPLOAD_MB
     assert f"Up to {limit} MB".encode() in client.get("/check").data
+
+
+def test_upload_page_offers_three_ways_to_pick_rules(client):
+    page = client.get("/check").get_data(as_text=True)
+    for mode in ("auto", "set", "ai"):
+        assert f'name="rule_mode" value="{mode}"' in page
+    assert 'value="auto" checked' in page  # choosing for you is the default
+
+
+def test_ai_mode_falls_back_to_choosing_rules_from_the_columns(client):
+    response = upload(client, b"name,email\nAsha,asha@example.com\n", rule_mode="ai", template="employees")
+    assert response.status_code == 200
+    assert "Let DataGuard choose" in response.get_data(as_text=True)
+
+
+def test_rule_set_mode_uses_the_picked_template(client):
+    response = upload(client, b"name,email\nAsha,asha@example.com\n", rule_mode="set", template="employees")
+    assert "Employees" in response.get_data(as_text=True)
+
+
+def test_checks_that_cannot_run_are_one_quiet_line_not_banners():
+    from src.webapp.app import create_app
+    client = create_app().test_client()  # the real engine, as on a laptop
+    sample = pathlib.Path(__file__).resolve().parent.parent / "samples" / "event_registrations.csv"
+    page = upload(client, sample.read_bytes(), name="event_registrations.csv",
+                  rule_mode="set", template="default").get_data(as_text=True)
+    assert "banner-warning" not in page
+    assert "Duplicate rows didn&#39;t run" in page or "Duplicate rows didn't run" in page
+    assert 'marked "Not run" have no settings' in page or "marked &#34;Not run&#34; have no settings" in page
+
+
+def test_downloads_apply_the_email_and_date_fixes_the_rules_name(client, tmp_path, monkeypatch):
+    """Auto-fix used to run with no settings, so emails and dates were never fixed."""
+    pytest.importorskip("src.autofix")
+    monkeypatch.delenv("DATAGUARD_UI_DEMO", raising=False)
+    monkeypatch.setattr(importlib.import_module("src.webapp.app"), "UPLOAD_DIR", tmp_path)
+    data = (b"emp_id,name,email,phone,join_date,salary\n"
+            b"E1,Priya Sharma,Priya@Company.COM,9876543210,15/01/2022,55000\n"
+            b"E2,Rahul Verma,rahul@company.com,9876543211,2022-03-20,\n"
+            b"E3,Anita Desai,anita@company.com,9876543212,2022-06-01,59000\n")
+    page = upload(client, data, template="employees")
+    assert page.status_code == 200
+    assert b"priya@company.com" in page.data  # shown in "What auto-fix changes"
+    cleaned = client.get("/download-cleaned").data.decode()
+    assert "E1,Priya Sharma,priya@company.com,9876543210,2022-01-15,55000" in cleaned
+    assert ".0" not in cleaned
+    changes = client.get("/download-changes").data.decode()
+    assert "lowercase" in changes and "normalize date" in changes
+
+
+def test_after_autofix_view_clears_what_autofix_fixed():
+    """A fixed cell kept its red mark and "1 to fix", so the cleaned view looked unfixed."""
+    pytest.importorskip("src.autofix")
+    data = (b"emp_id,name,email,phone,join_date,salary\n"
+            b"E001,Priya Sharma,priya@company.com,9876543210,15/01/2022,55000\n"
+            b"E002,Rahul Verma,rahul@company.com,9876543211,2022-03-20,62000\n"
+            b"E003,Anita Desai,anita-bad-email,9876543212,2022-06-01,48000\n"
+            b"E002,Rahul Verma,rahul@company.com,9876543211,2022-03-20,62000\n")
+    report = service.analyze_upload("e.csv", data, [], config_path="templates_rules/employees.yaml")
+    g = report.grid
+    by_problem = {(f.row, f.column or ""): i for i, f in enumerate(report.findings)}
+    date_fid = by_problem[("2", "join_date")]
+    email_fid = by_problem[("4", "email")]
+    dup_fid = next(i for i, f in enumerate(report.findings) if f.rule == "duplicates")
+    assert date_fid in g["resolved"]        # 15/01/2022 is rewritten as 2022-01-15
+    assert dup_fid in g["resolved"]         # the repeated row is removed
+    assert email_fid not in g["resolved"]   # anita-bad-email needs a person
+    cols = {c["name"]: c for c in g["columns"]}
+    assert (cols["join_date"]["bad"], cols["join_date"]["fixed"]) == (1, 1)
+    assert (cols["email"]["bad"], cols["email"]["fixed"]) == (1, 0)

@@ -24,10 +24,20 @@ _DATE_FORMATS = [
 
 _PCT_KEYWORDS = {"percent", "pct", "%", "attendance", "score"}
 _ID_KEYWORDS = {"id", "no", "code", "roll"}
+_PHONE_KEYWORDS = {"phone", "mobile", "contact", "whatsapp", "cell"}
+_NAME_KEYWORDS = {"name"}
+_PINCODE_KEYWORDS = {"pincode", "pin_code", "zip", "postal"}
+_INDIAN_MOBILE_RE = re.compile(r"^(?:\+91|91|0)?[6-9]\d{9}$")
+_DIGITS_RE = re.compile(r"^\+?\d{10,13}$")
+_PINCODE_RE = re.compile(r"^\d{6}$")
 
 MATCH_THRESHOLD = 0.90
-ID_UNIQUE_THRESHOLD = 0.95
-MISSING_THRESHOLD = 0.05
+# An ID column is still an ID column when it holds a duplicate or two, and the
+# duplicate is exactly what we want to catch, so allow a little repetition.
+ID_UNIQUE_THRESHOLD = 0.90
+# A column that is at least 80% filled is treated as required, so its blanks are
+# reported. At 5%, one blank in a 15-row file was enough to switch the check off.
+MISSING_THRESHOLD = 0.20
 SAMPLE_SIZE = 500
 
 
@@ -55,6 +65,10 @@ def infer_config(df: pd.DataFrame) -> tuple[dict, dict[str, str]]:
     pct_cols: list[str] = []
     id_cols: list[str] = []
     missing_cols: list[str] = []
+    phone_cols: list[str] = []
+    numeric_cols: list[str] = []
+    name_cols: list[str] = []
+    pincode_cols: list[str] = []
 
     for col in df.columns:
         series = df[col].dropna()
@@ -78,12 +92,30 @@ def infer_config(df: pd.DataFrame) -> tuple[dict, dict[str, str]]:
             date_format = fmt
             continue
 
+        if _detect_phone(non_empty, total, col, explanations):
+            phone_cols.append(col)
+            continue
+
+        if _detect_pincode(non_empty, total, col, explanations):
+            pincode_cols.append(col)
+            continue
+
         if _detect_percentage(non_empty, total, col, explanations):
             pct_cols.append(col)
             continue
 
         if _detect_id(series, col, explanations):
             id_cols.append(col)
+            continue
+
+        if _is_numeric(non_empty, total):
+            numeric_cols.append(col)
+            explanations[col] = "numbers: checked for unusual values"
+            continue
+
+        if any(kw in col.lower() for kw in _NAME_KEYWORDS):
+            name_cols.append(col)
+            explanations[col] = "names: checked for near-duplicate rows"
             continue
 
         explanations[col] = "no specific format detected"
@@ -110,7 +142,65 @@ def infer_config(df: pd.DataFrame) -> tuple[dict, dict[str, str]]:
     if pct_cols:
         rf["percentage_columns"] = pct_cols
 
+    # The two machine-learning checks: unusual numbers, and rows that are almost
+    # the same person or item (matched on names, plus email when there is one).
+    if numeric_cols:
+        config["anomalies"] = {"numeric_columns": numeric_cols}
+    if name_cols:
+        config["near_duplicates"] = {"key_columns": name_cols + email_cols[:1]}
+
+    india: dict[str, list[str]] = {}
+    if phone_cols:
+        india["phone_columns"] = phone_cols
+    if pincode_cols:
+        india["pincode_columns"] = pincode_cols
+    if india:
+        config["india_formats"] = india
+
     return config, explanations
+
+
+def _is_numeric(sample: pd.Series, total: int) -> bool:
+    numbers = pd.to_numeric(sample.str.replace(",", "", regex=False), errors="coerce")
+    return numbers.notna().sum() / total >= MATCH_THRESHOLD
+
+
+def _compact(sample: pd.Series) -> pd.Series:
+    """Phone-style values without spaces, dashes or a trailing .0 from Excel."""
+    return sample.str.replace(r"[\s-]", "", regex=True).str.replace(r"\.0$", "", regex=True)
+
+
+def _detect_phone(
+    sample: pd.Series, total: int, col: str, explanations: dict[str, str]
+) -> bool:
+    """A phone column is named like one and holds 10-13 digit numbers,
+    or, whatever its name, nearly every value is an Indian mobile number."""
+    values = _compact(sample)
+    named = any(kw in col.lower() for kw in _PHONE_KEYWORDS)
+    if named:
+        ratio = values.str.fullmatch(_DIGITS_RE).sum() / total
+        if ratio >= 0.8:
+            explanations[col] = f"detected as phone number by its name ({ratio:.0%} look like numbers)"
+            return True
+    ratio = values.str.fullmatch(_INDIAN_MOBILE_RE).sum() / total
+    if ratio >= MATCH_THRESHOLD:
+        explanations[col] = f"detected as Indian mobile number ({ratio:.0%} match)"
+        return True
+    return False
+
+
+def _detect_pincode(
+    sample: pd.Series, total: int, col: str, explanations: dict[str, str]
+) -> bool:
+    name = col.lower()
+    named = "pin" in re.split(r"[^a-z]+", name) or any(kw in name for kw in _PINCODE_KEYWORDS)
+    if not named:
+        return False
+    ratio = _compact(sample).str.fullmatch(_PINCODE_RE).sum() / total
+    if ratio >= MATCH_THRESHOLD:
+        explanations[col] = f"detected as pincode ({ratio:.0%} are 6 digits)"
+        return True
+    return False
 
 
 def _detect_email(

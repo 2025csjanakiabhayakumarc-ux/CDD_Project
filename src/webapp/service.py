@@ -90,6 +90,10 @@ class Report:
     total: int = 0
     score: int = 100
     rules_run: list = field(default_factory=list)
+    # Checks the chosen rules had no settings for. Shown greyed out, not as warnings.
+    skipped: list = field(default_factory=list)
+    # Checks that could not run because a column they are set up for is missing.
+    skipped_missing: list = field(default_factory=list)
     notes: list = field(default_factory=list)
     engine: str = "demo"
     error: str = ""
@@ -97,6 +101,8 @@ class Report:
     explanations: dict = field(default_factory=dict)
     fix_summary: str = ""
     fix_log: list = field(default_factory=list)
+    # Which columns auto-fix may treat as emails and dates, taken from the rules used.
+    fix_settings: dict = field(default_factory=dict)
     problem_rows: int = 0
     rule_counts: dict = field(default_factory=dict)
     # First PREVIEW_ROWS data rows as text, for the "data X-ray" grid on the report.
@@ -145,7 +151,7 @@ def analyze_upload(
 
     # Compute auto-fix summary
     try:
-        fix_summary, fix_log = _compute_fix_summary(data)
+        fix_summary, fix_log = _compute_fix_summary(data, report.fix_settings)
         report.fix_summary = fix_summary
         report.fix_log = fix_log[:MAX_FIXES_SHOWN]
     except Exception:  # noqa: BLE001, S110
@@ -191,6 +197,22 @@ def build_grid(report: Report) -> dict:
         elif entry.get("column"):
             fixes[(row, str(entry["column"]))] = str(entry.get("after", ""))
 
+    # Findings that auto-fix takes care of: a flagged cell it changes, or any finding on a
+    # row it removes. The "After auto-fix" view drops their marks and tags their notes, so
+    # it no longer shows a fixed cell still carrying its red "1" and "1 to fix".
+    resolved: set[int] = set()
+    fixed_per_column = {c: 0 for c in report.columns}
+    for i, f in enumerate(report.findings):
+        if not f.row:
+            continue
+        on_removed_row = f.row in removed
+        on_fixed_cell = f.column in fixed_per_column and (f.row, f.column) in fixes
+        if not (on_removed_row or on_fixed_cell):
+            continue
+        resolved.add(i)
+        if f.column in fixed_per_column:
+            fixed_per_column[f.column] += 1
+
     rows = []
     for offset, values in enumerate(report.preview):
         num = str(offset + ROW_OFFSET)
@@ -200,12 +222,18 @@ def build_grid(report: Report) -> dict:
             cell.update(cells.get((num, col), {}))
             if (num, col) in fixes:
                 cell["after"] = fixes[(num, col)]
+            if cell.get("fid") in resolved:
+                cell["resolved"] = True
             row_cells.append(cell)
-        rows.append({"num": num, "cells": row_cells, "removed": num in removed, **row_marks.get(num, {})})
+        row = {"num": num, "cells": row_cells, "removed": num in removed, **row_marks.get(num, {})}
+        if row.get("fid") in resolved:
+            row["resolved"] = True
+        rows.append(row)
 
     total = max(report.rows, 1)
     columns = [
-        {"name": c, "bad": bad_per_column[c], "health": round(100 * (total - bad_per_column[c]) / total)}
+        {"name": c, "bad": bad_per_column[c], "fixed": fixed_per_column[c],
+         "health": round(100 * (total - bad_per_column[c]) / total)}
         for c in report.columns
     ]
     return {
@@ -214,11 +242,33 @@ def build_grid(report: Report) -> dict:
         "shown": len(rows),
         "fixes": len(fixes),
         "removed": len(removed),
+        "resolved": sorted(resolved),
     }
 
 
-def get_cleaned_csv(data: bytes) -> tuple[bytes, str, list[dict]]:
-    """Return (cleaned_csv_bytes, summary_text, change_log) for a previously uploaded file."""
+def fix_settings_from(config: dict | None) -> dict:
+    """The auto-fix settings implied by a rules config: which columns hold emails and dates.
+
+    Without these, auto-fix never lowercased emails or rewrote dates such as 15/01/2022,
+    because it had no way to know which columns they were.
+    """
+    rf = (config or {}).get("range_and_format") or {}
+    if not isinstance(rf, dict):
+        return {}
+    settings = {
+        "email_columns": [str(c) for c in rf.get("email_columns") or []],
+        "date_columns": [str(c) for c in rf.get("date_columns") or []],
+    }
+    if rf.get("date_format"):
+        settings["date_format"] = str(rf["date_format"])
+    return {k: v for k, v in settings.items() if v}
+
+
+def get_cleaned_csv(data: bytes, settings: dict | None = None) -> tuple[bytes, str, list[dict]]:
+    """Return (cleaned_csv_bytes, summary_text, change_log) for a previously uploaded file.
+
+    settings: the report's fix_settings, so the download gets the same fixes the report showed.
+    """
     try:
         autofix = importlib.import_module("src.autofix")
         loader = importlib.import_module("src.loader")
@@ -230,7 +280,7 @@ def get_cleaned_csv(data: bytes) -> tuple[bytes, str, list[dict]]:
         path = folder / "upload.csv"
         path.write_bytes(data)
         df = loader.load_csv(str(path))
-        fixed_df, log = autofix.fix(df)
+        fixed_df, log = autofix.fix(df, **(settings or {}))
         csv_bytes = fixed_df.convert_dtypes().to_csv(index=False).encode("utf-8")
         summary = _summarise_log(log)
         return csv_bytes, summary, log
@@ -268,7 +318,7 @@ def _summarise_log(log: list[dict]) -> str:
     return ", ".join(parts) if parts else "No changes needed"
 
 
-def _compute_fix_summary(data: bytes) -> tuple[str, list[dict]]:
+def _compute_fix_summary(data: bytes, settings: dict | None = None) -> tuple[str, list[dict]]:
     """Run autofix on data and return (summary_text, change_log)."""
     autofix = importlib.import_module("src.autofix")
     loader = importlib.import_module("src.loader")
@@ -278,7 +328,7 @@ def _compute_fix_summary(data: bytes) -> tuple[str, list[dict]]:
         path = folder / "upload.csv"
         path.write_bytes(data)
         df = loader.load_csv(str(path))
-        _, log = autofix.fix(df)
+        _, log = autofix.fix(df, **(settings or {}))
         return _summarise_log(log), log
     finally:
         shutil.rmtree(folder, ignore_errors=True)
@@ -507,11 +557,11 @@ def _call_rule(fn, name, df, settings, required):
         if not kwargs.get("subset"):
             kwargs.pop("subset", None)  # an empty list means "check every column"
     elif not any(kwargs.values()):
-        return None, f"The {name} check was skipped because rules.yaml has no settings for it."
+        return None, None  # nothing to check with these rules; listed in report.skipped
     try:
         return _to_findings(fn(df, **kwargs), name), ""
     except KeyError:
-        return None, f"The {name} check was skipped because a column named in rules.yaml is not in your file."
+        return None, "missing-column"  # listed in report.skipped_missing
     except Exception as exc:  # noqa: BLE001 - a crashing rule must not break the page
         return None, f"The {name} check could not run: {exc}. Update service.py to match its inputs."
 
@@ -549,10 +599,16 @@ def _run_engine(engine, filename, data, required, report, config_path=None, auto
             config, config_note = _load_config()
             if config_note:
                 report.notes.append(config_note)
+        report.fix_settings = fix_settings_from(config)
 
         findings: list[UiFinding] = []
         for name, fn in engine["rules"]:
             found, note = _call_rule(fn, name, df, config.get(name), required)
+            if note is None:
+                report.skipped.append(name)
+            elif note == "missing-column":
+                report.skipped_missing.append(name)
+                note = ""
             if note:
                 report.notes.append(note)
             if found is None:

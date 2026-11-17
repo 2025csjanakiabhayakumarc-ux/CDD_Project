@@ -49,12 +49,15 @@ def _build_prompt(report: Report) -> str:
         "Give a 3-4 sentence plain-English summary of the data quality, then list "
         "the top 3 things to fix first (one sentence each). "
         "Format: first the summary paragraph, then a blank line, then each fix on "
-        "its own line starting with a number and period (1. 2. 3.)."
+        "its own line starting with a number and period (1. 2. 3.). "
+        "Write plain text: no Markdown, no backticks, no asterisks."
     )
 
 
 def _call_gemini(key: str, prompt: str) -> dict:
-    text = gemini.generate(key, prompt)
+    # The page shows this as plain text, so Markdown the model adds anyway would show up
+    # literally, as `employees.csv` or **row 4**.
+    text = gemini.generate(key, prompt).replace("`", "").replace("**", "")
 
     parts = text.split("\n\n", 1)
     summary = parts[0].strip()
@@ -67,29 +70,47 @@ def _call_gemini(key: str, prompt: str) -> dict:
     return {"summary": summary, "top_fixes": fixes[:3], "ai": True}
 
 
+_RULE_PHRASES = {
+    "required_columns": "Missing columns",
+    "missing_values": "Blank cells in required fields",
+    "duplicates": "Repeated rows",
+    "range_and_format": "Badly formatted or out-of-range values",
+    "india_formats": "Invalid Indian phone numbers or codes",
+    "anomalies": "Unusual values",
+    "near_duplicates": "Rows that look like near-copies",
+}
+
+
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}" + ("" if n == 1 else "s")
+
+
 def _fallback(report: Report) -> dict:
     """Rule-based summary when AI is unavailable."""
     total = report.total
     errors = report.counts["error"]
     warnings = report.counts["warning"]
     score = report.score
+    rows = _plural(report.rows, "row")
+
+    found = " and ".join(p for p in (
+        _plural(errors, "error") if errors else "",
+        _plural(warnings, "warning") if warnings else "",
+    ) if p) or _plural(total, "note")
 
     if total == 0:
-        summary = f"Your file looks good — all {report.rows} rows passed every check with a perfect score."
+        summary = f"Your file looks good. All {rows} passed every check."
     elif score >= 80:
-        summary = (
-            f"Your file scored {score}/100 with {errors} error(s) and {warnings} warning(s). "
-            f"Most of the {report.rows} rows are fine, but a few need attention."
-        )
+        summary = f"Your file scored {score} out of 100, with {found}. Most of the {rows} are fine, but a few need attention."
     elif score >= 50:
         summary = (
-            f"Your file scored {score}/100. We found {errors} error(s) and {warnings} warning(s) "
-            f"across {report.rows} rows. Several records need correction before this data is reliable."
+            f"Your file scored {score} out of 100. There are {found} across {rows}. "
+            "Several records need correcting before this data is reliable."
         )
     else:
         summary = (
-            f"Your file scored {score}/100 — it needs significant work. "
-            f"We found {errors} error(s) and {warnings} warning(s) across {report.rows} rows."
+            f"Your file scored {score} out of 100 and needs significant work. "
+            f"There are {found} across {rows}."
         )
 
     rule_counts: dict[str, int] = {}
@@ -98,6 +119,7 @@ def _fallback(report: Report) -> dict:
 
     fixes = []
     for rule, count in sorted(rule_counts.items(), key=lambda x: -x[1])[:3]:
-        fixes.append(f"Fix {count} {rule.replace('_', ' ')} issue(s)")
+        what = _RULE_PHRASES.get(rule, rule.replace("_", " ").capitalize())
+        fixes.append(f"{what}: {count} to fix")
 
     return {"summary": summary, "top_fixes": fixes, "ai": False}

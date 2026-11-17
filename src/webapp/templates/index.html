@@ -3,105 +3,111 @@
 {% block body_class %}page-upload{% endblock %}
 
 {% block content %}
+<header class="upload-head">
+  <h1 id="upload-title">Check a file</h1>
+  <p class="lead">Drop in a spreadsheet and choose how to check it. Every problem is marked on your data, and you can download a cleaned copy.</p>
+</header>
+
+{% if error %}
+<div class="banner banner-error" role="alert">
+  <strong>Could not check that file.</strong> {{ error }}
+</div>
+{% endif %}
+
 <div class="upload-layout">
-  <section class="upload-main" aria-labelledby="upload-title">
-    <h1 id="upload-title">Check a file</h1>
-    <p class="lead">Three steps. You'll see every problem marked on your data, then you can download a cleaned copy.</p>
+  <form id="upload-form" class="sheet upload-card" method="post" action="{{ url_for('validate') }}" enctype="multipart/form-data" aria-labelledby="upload-title">
 
-    {% if error %}
-    <div class="banner banner-error" role="alert">
-      <strong>Could not check that file.</strong> {{ error }}
+    {# ---------- The file ---------- #}
+    <div class="card-part part-file" id="step-file">
+      <label class="dropzone" id="dropzone" for="file">
+        <input class="visually-hidden" id="file" name="file" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+        <span class="blank-sheet">
+          <span class="bs-head bs-corner" aria-hidden="true"></span>
+          {% for letter in ['A', 'B', 'C', 'D', 'E', 'F'] %}<span class="bs-head" aria-hidden="true">{{ letter }}</span>{% endfor %}
+          {% for n in range(1, 5) %}
+          <span class="bs-num" aria-hidden="true">{{ n }}</span>
+          {% for _ in range(6) %}<span class="bs-cell" aria-hidden="true"></span>{% endfor %}
+          {% endfor %}
+          <span class="drop-copy">
+            <span class="dropzone-title" id="drop-title">Drag a CSV or Excel file here</span>
+            <span class="dropzone-sub" id="drop-sub"><span class="pick-btn">Choose a file</span> <span class="drop-limit">CSV or Excel. Up to {{ max_mb }} MB</span></span>
+            <span class="fill-handle" aria-hidden="true"></span>
+          </span>
+        </span>
+      </label>
+
+      <div class="file-peek" id="file-peek" hidden>
+        <div class="table-scroll"><table class="grid peek-table" id="peek-table"></table></div>
+        <p class="peek-foot"><span id="peek-name" hidden></span><span id="peek-size"></span>. These are the first rows of your file.</p>
+      </div>
     </div>
-    {% endif %}
 
-    <form id="upload-form" method="post" action="{{ url_for('validate') }}" enctype="multipart/form-data">
-      <ol class="form-steps">
+    {# ---------- How to check it ---------- #}
+    <fieldset class="card-part part-rules">
+      <legend class="part-title">How should it be checked?</legend>
+      <div class="modes">
+        <label class="mode">
+          <input type="radio" name="rule_mode" value="auto" checked>
+          <span class="mode-name">Choose for me</span>
+          <span class="mode-desc">Reads your column names and picks the checks that fit.</span>
+        </label>
+        <label class="mode">
+          <input type="radio" name="rule_mode" value="set">
+          <span class="mode-name">A ready-made rule set</span>
+          <span class="mode-desc">Students, employees, sales orders, inventory and events.</span>
+        </label>
+        <label class="mode mode-ai{{ ' is-off' if not ai_on }}">
+          <input type="radio" name="rule_mode" value="ai"{{ ' disabled' if not ai_on }}>
+          <span class="mode-name">Describe it <span class="ai-badge"><svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><path d="M6 0c.4 3.2 2.8 5.6 6 6-3.2.4-5.6 2.8-6 6-.4-3.2-2.8-5.6-6-6 3.2-.4 5.6-2.8 6-6Z" fill="currentColor"/></svg>Gemini</span></span>
+          <span class="mode-desc">{% if ai_on %}Write the rules in plain English. Gemini turns them into checks.{% else %}Turned off. Add a Gemini key to the .env file to use it.{% endif %}</span>
+        </label>
+      </div>
 
-        <li class="form-step" id="step-file">
-          <h2 class="step-title"><span class="step-num" aria-hidden="true">1</span>Choose your file</h2>
-          <div class="sheet upload-sheet">
-            <label class="dropzone" id="dropzone" for="file">
-              <input class="visually-hidden" id="file" name="file" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
-              <span class="blank-sheet">
-                <span class="bs-head bs-corner" aria-hidden="true"></span>
-                {% for letter in ['A', 'B', 'C', 'D', 'E', 'F'] %}<span class="bs-head" aria-hidden="true">{{ letter }}</span>{% endfor %}
-                {% for n in range(1, 8) %}
-                <span class="bs-num" aria-hidden="true">{{ n }}</span>
-                {% for _ in range(6) %}<span class="bs-cell" aria-hidden="true"></span>{% endfor %}
-                {% endfor %}
-                <span class="drop-copy">
-                  <span class="dropzone-title" id="drop-title">Drag a CSV or Excel file here</span>
-                  <span class="dropzone-sub" id="drop-sub"><span class="pick-btn">Choose a file</span> <span class="drop-limit">Up to {{ max_mb }} MB</span></span>
-                  <span class="fill-handle" aria-hidden="true"></span>
-                </span>
-              </span>
-            </label>
+      <div class="mode-panel" data-for="set">
+        <label class="field-label" for="template">Rule set</label>
+        <select id="template" name="template">
+          {% for s in rule_sets if s.value != 'auto' %}
+          <option value="{{ s.value }}">{{ s.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
 
-            <div class="file-peek" id="file-peek" hidden>
-              <div class="table-scroll"><table class="grid peek-table" id="peek-table"></table></div>
-              <p class="peek-foot"><span id="peek-name" hidden></span><span id="peek-size"></span>. These are the first rows of your file.</p>
-            </div>
-          </div>
-          <p class="samples">No file to hand? Try a sample:
-            <a href="{{ url_for('try_sample', name='employees') }}">employees.csv</a> (has 5 problems) or
-            <a href="{{ url_for('try_sample', name='employees_clean') }}">employees_clean.csv</a> (has none).</p>
-        </li>
+      {% if ai_on %}
+      <div class="mode-panel" data-for="ai">
+        <label class="field-label" for="ai_rules">Your rules, in a sentence or two</label>
+        <textarea id="ai_rules" name="ai_rules" rows="3" placeholder="phone must be an Indian mobile, email is required, attendance is between 0 and 100"></textarea>
+        <p class="helper">Only this text goes to Gemini, never your file. If it can't write valid rules, DataGuard chooses them instead.</p>
+      </div>
+      {% endif %}
 
-        <li class="form-step" id="step-rules">
-          <h2 class="step-title"><span class="step-num" aria-hidden="true">2</span><label for="template">Pick the rules</label></h2>
-          <select id="template" name="template" aria-describedby="check-summary">
-            {% for s in rule_sets if s.value == 'auto' %}
-            <option value="auto" selected>Let DataGuard choose (recommended)</option>
-            {% endfor %}
-            <optgroup label="Ready-made rule sets">
-              {% for s in rule_sets if s.value != 'auto' %}
-              <option value="{{ s.value }}">{{ s.label }}</option>
-              {% endfor %}
-            </optgroup>
-          </select>
-          <p class="helper" id="check-summary"></p>
-          <details class="options rules-peek">
-            <summary>What these rules check</summary>
-            <ul class="rule-list" id="check-rules"></ul>
-            <p class="expects" id="check-columns"></p>
-          </details>
-          <details class="options">
-            <summary>Add columns that must be in the file</summary>
-            <label class="field-label" for="required">Column names, separated by commas</label>
-            <input id="required" name="required" type="text" placeholder="student_id, name, attendance" autocomplete="off">
-          </details>
-          {% if ai_on %}
-          <details class="options">
-            <summary>Or describe your rules in plain English (AI)</summary>
-            <label class="field-label" for="ai_rules">For example: phone must be an Indian mobile, email required, attendance 0 to 100</label>
-            <textarea id="ai_rules" name="ai_rules" rows="3" placeholder="phone must be an Indian mobile, email required, salary must be positive"></textarea>
-            <p class="helper">Only this sentence is sent to Gemini, not your file. If the AI can't write valid rules, the rules picked above are used.</p>
-          </details>
-          {% endif %}
-        </li>
+      <details class="options">
+        <summary>Also require certain columns</summary>
+        <label class="field-label" for="required">Column names, separated by commas</label>
+        <input id="required" name="required" type="text" placeholder="student_id, name, attendance" autocomplete="off">
+      </details>
+    </fieldset>
 
-        <li class="form-step" id="step-go">
-          <h2 class="step-title"><span class="step-num" aria-hidden="true">3</span>Check it</h2>
-          <button class="btn btn-primary btn-lg" type="submit" id="submit-btn">
-            <span class="btn-label">Check my file</span>
-            <span class="spinner" aria-hidden="true"></span>
-          </button>
-          <p class="helper" id="submit-help" aria-live="polite">Choose a file in step 1 first.</p>
-        </li>
-      </ol>
-    </form>
-  </section>
+    {# ---------- Go ---------- #}
+    <div class="card-part part-go">
+      <p class="helper" id="submit-help" aria-live="polite">Choose a file first.</p>
+      <button class="btn btn-primary btn-lg" type="submit" id="submit-btn">
+        <span class="btn-label">Check my file</span>
+        <span class="spinner" aria-hidden="true"></span>
+      </button>
+    </div>
+  </form>
 
-  <aside class="upload-side" aria-labelledby="next-title">
-    <section>
-      <h2 id="next-title" class="side-title">What happens next</h2>
-      <ol class="next-list">
-        <li><strong>Every row is checked</strong><span>against the rules you picked. Small files take a second or two, and the largest up to half a minute.</span></li>
-        <li><strong>You see your data, marked up</strong><span>Each problem gets a numbered mark on its cell and a note saying how to fix it.</span></li>
-        <li><strong>You download a cleaned copy</strong><span>Safe fixes are applied for you, with a list of every change. Anything that needs a person is left alone.</span></li>
-      </ol>
-      <p class="side-note">Your file is checked by this app and kept on this computer for an hour, so you can download the cleaned copy. Then it is deleted. {% if ai_on %}The AI summary sees only column names and the problems found, never the whole file.{% else %}Nothing is sent to an AI service.{% endif %}</p>
+  <aside class="upload-side" aria-labelledby="checks-title">
+    <section class="side-block">
+      <h2 id="checks-title" class="side-title">What will be checked</h2>
+      <p class="helper" id="check-summary"></p>
+      <ul class="rule-list" id="check-rules"></ul>
+      <p class="expects" id="check-columns"></p>
     </section>
+    <p class="side-note">Your file stays on this computer for an hour so you can download the cleaned copy, then it is deleted. {% if ai_on %}Gemini sees only column names and the problems found, never your rows.{% else %}Nothing is sent to an AI service.{% endif %}</p>
+    <p class="side-note">No file to hand? Try
+      <a href="{{ url_for('try_sample', name='employees') }}">employees.csv</a>, which has 5 problems, or
+      <a href="{{ url_for('try_sample', name='employees_clean') }}">the clean copy</a>.</p>
   </aside>
 </div>
 
