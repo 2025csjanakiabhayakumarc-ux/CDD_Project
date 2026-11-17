@@ -118,20 +118,20 @@ def _strip_whitespace(df: pd.DataFrame, log: list[dict]) -> None:
     for col in df.columns:
         if not pd.api.types.is_string_dtype(df[col]):
             continue
-        for idx in df.index:
-            val = df.at[idx, col]
-            if not isinstance(val, str):
-                continue
+        # One pass over the column, then only the cells that change are touched.
+        # Reading every cell with df.at took seconds on files of a few MB.
+        values = df[col]
+        changed = values.map(lambda v: isinstance(v, str) and v != v.strip())
+        for idx, val in values[changed.astype(bool)].items():
             stripped = val.strip()
-            if stripped != val:
-                log.append({
-                    "row": int(idx),
-                    "column": col,
-                    "before": val,
-                    "after": stripped,
-                    "fix": "trim whitespace",
-                })
-                df.at[idx, col] = stripped
+            log.append({
+                "row": int(idx),
+                "column": col,
+                "before": val,
+                "after": stripped,
+                "fix": "trim whitespace",
+            })
+            df.at[idx, col] = stripped
 
 
 def _lowercase_emails(df: pd.DataFrame, columns: list[str], log: list[dict]) -> None:
