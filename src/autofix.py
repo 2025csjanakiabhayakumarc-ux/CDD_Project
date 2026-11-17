@@ -6,6 +6,8 @@ from datetime import datetime
 import pandas as pd
 from sklearn.impute import KNNImputer
 
+from src.anomalies import _is_code_column
+
 _DATE_PARSE_FORMATS = ["%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d"]
 
 ID_KEYWORDS = {"id", "name", "email", "student_id", "emp_id", "roll"}
@@ -53,9 +55,12 @@ def _impute_numeric_knn(
     df: pd.DataFrame, protected: set[str], log: list[dict],
 ) -> None:
     """Fill blank numeric cells using KNN imputation (k=3)."""
+    # Code columns (phone, pincode, account numbers) are labels, not amounts: two people
+    # with close phone numbers are not alike, so they must not steer the estimate.
     numeric_cols = [
         c for c in df.columns
         if c.lower() not in protected and pd.api.types.is_numeric_dtype(df[c])
+        and not _is_code_column(c)
     ]
     if not numeric_cols:
         return
@@ -70,11 +75,16 @@ def _impute_numeric_knn(
     filled_df = pd.DataFrame(filled, columns=numeric_cols, index=df.index)
 
     for col in numeric_cols:
+        known = subset[col].dropna()
+        # A column of whole numbers (salaries, marks) gets a whole-number estimate.
+        # 51333.33 in a salary column looked wrong, and the decimal made the cleaned
+        # CSV write every other salary as 55000.0.
+        whole = bool(len(known)) and bool((known % 1 == 0).all())
         for idx in df.index:
             if mask_before.at[idx, col]:
                 new_val = filled_df.at[idx, col]
                 if pd.notna(new_val):
-                    rounded = round(new_val, 2)
+                    rounded = round(float(new_val)) if whole else round(float(new_val), 2)
                     log.append({
                         "row": int(idx),
                         "column": col,
@@ -118,20 +128,20 @@ def _strip_whitespace(df: pd.DataFrame, log: list[dict]) -> None:
     for col in df.columns:
         if not pd.api.types.is_string_dtype(df[col]):
             continue
-        for idx in df.index:
-            val = df.at[idx, col]
-            if not isinstance(val, str):
-                continue
+        # One pass over the column, then only the cells that change are touched.
+        # Reading every cell with df.at took seconds on files of a few MB.
+        values = df[col]
+        changed = values.map(lambda v: isinstance(v, str) and v != v.strip())
+        for idx, val in values[changed.astype(bool)].items():
             stripped = val.strip()
-            if stripped != val:
-                log.append({
-                    "row": int(idx),
-                    "column": col,
-                    "before": val,
-                    "after": stripped,
-                    "fix": "trim whitespace",
-                })
-                df.at[idx, col] = stripped
+            log.append({
+                "row": int(idx),
+                "column": col,
+                "before": val,
+                "after": stripped,
+                "fix": "trim whitespace",
+            })
+            df.at[idx, col] = stripped
 
 
 def _lowercase_emails(df: pd.DataFrame, columns: list[str], log: list[dict]) -> None:

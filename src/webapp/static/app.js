@@ -1,97 +1,304 @@
+/* DataGuard front end. Everything here is progressive: the pages work without it. */
 (function () {
   "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
 
-  // ---- light / dark switch ----
-  var toggle = document.getElementById("theme-toggle");
+  /* ---------- Theme toggle ---------- */
+  var toggle = $("theme-toggle");
   if (toggle) {
     toggle.addEventListener("click", function () {
       var root = document.documentElement;
       var dark = root.dataset.theme
         ? root.dataset.theme === "dark"
         : window.matchMedia("(prefers-color-scheme: dark)").matches;
-      var next = dark ? "light" : "dark";
-      root.dataset.theme = next;
-      try { localStorage.setItem("dg-theme", next); } catch (e) { /* storage may be blocked */ }
+      root.dataset.theme = dark ? "light" : "dark";
+      try { localStorage.setItem("dg-theme", root.dataset.theme); } catch (e) { /* storage blocked */ }
     });
   }
 
-  // ---- upload page ----
-  var zone = document.getElementById("dropzone");
-  var input = document.getElementById("file");
-  var nameBox = document.getElementById("file-name");
-  var form = document.getElementById("upload-form");
-  var submit = document.getElementById("submit-btn");
+  /* ---------- Upload page ---------- */
+  var RULE_TEXT = {
+    required_columns: "Every expected column is present",
+    missing_values: "No blank cells in required fields",
+    duplicates: "No repeated rows (reported as a warning)",
+    range_and_format: "Emails, dates and numbers are well formed and in range",
+    india_formats: "Indian mobile numbers and other Indian formats you configure",
+    anomalies: "Numbers far outside what the rest of the column holds (machine learning)",
+    near_duplicates: "Rows that are almost the same, such as a name spelt two ways (machine learning)"
+  };
 
-  function showName() {
-    if (!input || !nameBox) return;
-    var file = input.files && input.files[0];
-    nameBox.textContent = file ? file.name + " (" + Math.max(1, Math.round(file.size / 1024)) + " KB)" : "";
-    if (zone) zone.classList.toggle("has-file", !!file);
-  }
+  var RULE_NAME = {
+    required_columns: "Required columns",
+    missing_values: "Missing values",
+    duplicates: "Duplicate rows",
+    range_and_format: "Ranges and formats",
+    india_formats: "Indian formats",
+    anomalies: "Unusual values",
+    near_duplicates: "Near-duplicates"
+  };
 
-  if (zone && input) {
-    input.addEventListener("change", showName);
-    ["dragenter", "dragover"].forEach(function (evt) {
-      zone.addEventListener(evt, function (e) { e.preventDefault(); zone.classList.add("is-dragging"); });
+  var form = $("upload-form");
+  if (form) {
+    var input = $("file"), zone = $("dropzone"), submit = $("submit-btn"), help = $("submit-help");
+    var select = $("template"), setsEl = $("rule-sets");
+    var sets = [];
+    try { sets = JSON.parse(setsEl ? setsEl.textContent : "[]"); } catch (e) { sets = []; }
+
+    var modeOf = function () {
+      var on = form.querySelector('input[name="rule_mode"]:checked');
+      return on ? on.value : "auto";
+    };
+
+    var showRules = function () {
+      var mode = modeOf();
+      var list = $("check-rules"), tags = $("check-columns"), summary = $("check-summary");
+      list.innerHTML = ""; tags.textContent = "";
+      if (mode === "ai") {
+        summary.textContent = "Gemini writes the checks from your sentence. The report shows the rules it wrote, so you can see exactly what was checked.";
+        return;
+      }
+      var key = mode === "auto" ? "auto" : select.value;
+      var set = sets.filter(function (s) { return s.value === key; })[0];
+      if (!set) return;
+      set.rules.forEach(function (r) {
+        var li = document.createElement("li");
+        li.innerHTML = '<strong class="r"></strong><span class="d"></span>';
+        li.title = r;
+        li.querySelector(".r").textContent = RULE_NAME[r] || r;
+        li.querySelector(".d").textContent = RULE_TEXT[r] || "";
+        list.appendChild(li);
+      });
+      summary.textContent = set.value === "auto"
+        ? "DataGuard reads your column names and picks from these checks."
+        : set.rules.length + " check" + (set.rules.length === 1 ? "" : "s") + " from " + set.source + ".";
+      tags.textContent = set.columns.length ? "Expects the columns " + set.columns.join(", ") + "." : "";
+    };
+
+    // Only the panel for the chosen mode is shown, and only its fields are sent.
+    var applyMode = function () {
+      var mode = modeOf();
+      $$(".mode-panel", form).forEach(function (p) { p.hidden = p.dataset.for !== mode; });
+      var ai = $("ai_rules");
+      if (ai) ai.disabled = mode !== "ai";
+      showRules();
+    };
+    $$('input[name="rule_mode"]', form).forEach(function (r) { r.addEventListener("change", applyMode); });
+    if (select) select.addEventListener("change", showRules);
+    applyMode();
+
+    var setReady = function (ready) {
+      submit.disabled = !ready;
+      help.textContent = ready ? "Ready. Most files take a few seconds." : "Choose a file first.";
+    };
+    setReady(false);
+
+    var splitLine = function (line) {
+      var out = [], cur = "", q = false;
+      for (var i = 0; i < line.length; i++) {
+        var ch = line[i];
+        if (ch === '"') { if (q && line[i + 1] === '"') { cur += '"'; i++; } else { q = !q; } }
+        else if (ch === "," && !q) { out.push(cur); cur = ""; }
+        else { cur += ch; }
+      }
+      out.push(cur);
+      return out;
+    };
+
+    var peek = function (file) {
+      $("peek-name").textContent = file.name;
+      var kb = file.size / 1024;
+      $("peek-size").textContent = kb < 1024 ? Math.max(1, Math.round(kb)) + " KB" : (kb / 1024).toFixed(1) + " MB";
+      var table = $("peek-table");
+      table.innerHTML = "";
+      $("file-peek").hidden = false;
+      if (!/\.(csv|txt|tsv)$/i.test(file.name)) {
+        table.innerHTML = '<tbody><tr><td>Excel file: the preview appears after checking.</td></tr></tbody>';
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function () {
+        var lines = String(reader.result).split(/\r?\n/).filter(function (l) { return l.trim() !== ""; }).slice(0, 5);
+        if (!lines.length) { table.innerHTML = "<tbody><tr><td>This file looks empty.</td></tr></tbody>"; return; }
+        var head = document.createElement("thead"), body = document.createElement("tbody");
+        lines.forEach(function (line, i) {
+          var tr = document.createElement("tr");
+          var num = document.createElement("th");
+          num.className = "rownum"; num.textContent = String(i + 1); tr.appendChild(num);
+          splitLine(line).forEach(function (v) {
+            var cell = document.createElement(i === 0 ? "th" : "td");
+            cell.textContent = v; tr.appendChild(cell);
+          });
+          (i === 0 ? head : body).appendChild(tr);
+        });
+        table.appendChild(head); table.appendChild(body);
+      };
+      reader.readAsText(file.slice(0, 64 * 1024));
+    };
+
+    var chosen = function () {
+      var file = input.files && input.files[0];
+      if (!file) { setReady(false); zone.classList.remove("has-file"); $("file-peek").hidden = true; return; }
+      zone.classList.add("has-file");
+      $("drop-title").textContent = file.name;
+      $("drop-sub").innerHTML = '<span class="link-text">Choose a different file</span>';
+      peek(file);
+      setReady(true);
+    };
+    input.addEventListener("change", chosen);
+
+    ["dragenter", "dragover"].forEach(function (t) {
+      zone.addEventListener(t, function (e) { e.preventDefault(); zone.classList.add("is-over"); });
     });
-    ["dragleave", "drop"].forEach(function (evt) {
-      zone.addEventListener(evt, function (e) { e.preventDefault(); zone.classList.remove("is-dragging"); });
+    ["dragleave", "drop"].forEach(function (t) {
+      zone.addEventListener(t, function (e) { e.preventDefault(); zone.classList.remove("is-over"); });
     });
     zone.addEventListener("drop", function (e) {
       if (e.dataTransfer && e.dataTransfer.files.length) {
-        input.files = e.dataTransfer.files;
-        showName();
+        try { input.files = e.dataTransfer.files; } catch (err) { /* older browsers */ }
+        chosen();
       }
     });
-  }
 
-  if (form && submit) {
-    form.addEventListener("submit", function () {
-      submit.classList.add("is-loading");
-      submit.textContent = "Checking…";
+    form.addEventListener("submit", function (e) {
+      if (!input.files || !input.files.length) { e.preventDefault(); setReady(false); return; }
+      submit.classList.add("is-busy");
+      submit.querySelector(".btn-label").textContent = "Checking…";
+      var mode = modeOf();
+      help.textContent = mode === "ai" ? "Asking Gemini for rules, then checking every row."
+        : mode === "auto" ? "Choosing the rules and checking every row."
+        : "Checking every row against " + (select.options[select.selectedIndex] || {}).text + ".";
+    });
+    // Coming back with the browser's Back button must not leave the button stuck.
+    window.addEventListener("pageshow", function () {
+      submit.classList.remove("is-busy");
+      submit.querySelector(".btn-label").textContent = "Check my file";
     });
   }
 
-  // ---- report page: filters, download, print ----
-  var table = document.getElementById("findings");
-  var filterButtons = document.querySelectorAll("[data-filter]");
-  filterButtons.forEach(function (btn) {
+  /* ---------- Report page ---------- */
+  var report = $("dataguard-report");
+  if (!report) return;
+
+  var xray = document.querySelector(".xray");
+  var findings = $$(".finding");
+
+  // Original / after auto-fix
+  $$(".seg").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      var wanted = btn.getAttribute("data-filter");
-      filterButtons.forEach(function (b) { b.classList.toggle("is-active", b === btn); });
-      if (!table) return;
-      table.querySelectorAll("tbody tr").forEach(function (row) {
-        row.hidden = wanted !== "all" && row.getAttribute("data-severity") !== wanted;
+      var cleaned = btn.getAttribute("data-version") === "cleaned";
+      xray.classList.toggle("is-cleaned", cleaned);
+      // The notes list sits outside the sheet; it tags the notes auto-fix takes care of.
+      report.classList.toggle("is-cleaned", cleaned);
+      $$(".seg").forEach(function (b) {
+        var on = b === btn;
+        b.classList.toggle("is-on", on);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
       });
     });
   });
 
-  function csvCell(value) {
-    var text = String(value).replace(/\s+/g, " ").trim();
-    if (/^[=+\-@]/.test(text)) text = "'" + text; // stop spreadsheet formula tricks
-    return '"' + text.replace(/"/g, '""') + '"';
-  }
-
-  var download = document.getElementById("download-csv");
-  if (download && table) {
-    download.addEventListener("click", function () {
-      var lines = [["Level", "Rule", "Where", "Problem", "How to fix it"].map(csvCell).join(",")];
-      table.querySelectorAll("tbody tr").forEach(function (row) {
-        if (row.hidden) return;
-        var cells = Array.prototype.map.call(row.children, function (td) { return csvCell(td.textContent); });
-        lines.push(cells.join(","));
+  // Filters
+  var words = { all: "all problems", error: "errors", warning: "warnings", info: "notes" };
+  $$("[data-filter]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var wanted = btn.getAttribute("data-filter");
+      $$("[data-filter]").forEach(function (b) {
+        var on = b === btn;
+        b.classList.toggle("is-active", on);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
       });
-      var blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
-      var link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = "dataguard-problems.csv";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(link.href);
+      var shown = 0;
+      findings.forEach(function (f) {
+        var keep = wanted === "all" || f.getAttribute("data-severity") === wanted;
+        f.hidden = !keep;
+        if (keep) shown++;
+      });
+      var status = $("filter-status");
+      if (status) status.textContent = "Showing " + shown + " " + words[wanted] + ".";
+    });
+  });
+
+  // Grid <-> problems list
+  var focusTarget = function (fid) {
+    var target = document.querySelector('.grid [data-fid="' + fid + '"]');
+    if (!target) return;
+    $$(".grid .is-focus").forEach(function (el) { el.classList.remove("is-focus"); });
+    void target.offsetWidth; // restart the pulse
+    target.classList.add("is-focus");
+    target.scrollIntoView({ block: "center", inline: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  };
+  var selectFinding = function (fid, scrollList) {
+    findings.forEach(function (f) { f.classList.toggle("is-selected", f.getAttribute("data-fid") === String(fid)); });
+    var item = document.querySelector('.finding[data-fid="' + fid + '"]');
+    if (item && scrollList) {
+      if (item.hidden) { var all = document.querySelector('[data-filter="all"]'); if (all) all.click(); }
+      item.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  };
+  findings.forEach(function (f) {
+    f.querySelector(".finding-hit").addEventListener("click", function () {
+      var fid = f.getAttribute("data-fid");
+      selectFinding(fid, false);
+      focusTarget(fid);
+    });
+  });
+  $$(".grid [data-fid]").forEach(function (el) {
+    var go = function () { var fid = el.getAttribute("data-fid"); selectFinding(fid, true); focusTarget(fid); };
+    var hit = el.tagName === "TR" ? el.querySelector(".rownum") : el;
+    hit.addEventListener("click", go);
+    if (el.tagName === "TD") el.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+  });
+
+  // Landing page: the sheet stack leans a little toward the pointer
+  var stage = $("stack-stage");
+  if (stage && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    var stack = stage.querySelector(".stack");
+    stage.addEventListener("pointermove", function (e) {
+      var r = stage.getBoundingClientRect();
+      var x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5;
+      stack.style.setProperty("--rx", (56 - y * 10).toFixed(1) + "deg");
+      stack.style.setProperty("--rz", (-32 + x * 14).toFixed(1) + "deg");
+    });
+    stage.addEventListener("pointerleave", function () {
+      stack.style.removeProperty("--rx"); stack.style.removeProperty("--rz");
     });
   }
 
-  var print = document.getElementById("print-report");
-  if (print) print.addEventListener("click", function () { window.print(); });
+  // Row map: jump to a row in the sheet
+  $$("[data-goto-row]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var tr = document.querySelector('.grid tr[data-row="' + btn.getAttribute("data-goto-row") + '"]');
+      if (!tr) return;
+      var marked = tr.querySelector("[data-fid]") || (tr.hasAttribute("data-fid") ? tr : null);
+      if (marked) { var fid = marked.getAttribute("data-fid"); selectFinding(fid, true); focusTarget(fid); return; }
+      $$(".grid .is-focus").forEach(function (el) { el.classList.remove("is-focus"); });
+      void tr.offsetWidth;
+      tr.classList.add("is-focus");
+      tr.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    });
+  });
+
+  // Export the problems list as CSV
+  var exportBtn = $("download-csv");
+  if (exportBtn) {
+    exportBtn.addEventListener("click", function () {
+      var q = function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; };
+      var rows = [["severity", "rule", "row", "column", "problem", "how_to_fix"]];
+      findings.forEach(function (f) {
+        rows.push([
+          f.getAttribute("data-severity"), f.getAttribute("data-rule"),
+          f.getAttribute("data-row"), f.getAttribute("data-col"),
+          f.querySelector(".f-msg").textContent.trim(), f.querySelector(".f-hint").textContent.trim()
+        ]);
+      });
+      var blob = new Blob([rows.map(function (r) { return r.map(q).join(","); }).join("\n")], { type: "text/csv" });
+      var a = document.createElement("a");
+      var name = (document.querySelector(".file-title") || {}).textContent || "data.csv";
+      a.href = URL.createObjectURL(blob);
+      a.download = name.trim().replace(/\.[^.]+$/, "") + "_problems.csv";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    });
+  }
 })();

@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 MAX_FINDINGS_SHOWN = 500
+PREVIEW_ROWS = 200  # rows shown in the report's data grid
+MAX_FIXES_SHOWN = 500
 
 # (rule name, modules to look in, function names to look for)
 RULES = (
@@ -36,6 +38,7 @@ RULES = (
     ("anomalies", ("src.anomalies",), ("check",)),
     ("near_duplicates", ("src.fuzzy_duplicates",), ("check",)),
 )
+RULE_NAMES = tuple(name for name, _modules, _functions in RULES)
 
 # These rules still work with no settings (duplicates checks every column).
 RUNS_WITHOUT_SETTINGS = {"duplicates"}
@@ -87,6 +90,10 @@ class Report:
     total: int = 0
     score: int = 100
     rules_run: list = field(default_factory=list)
+    # Checks the chosen rules had no settings for. Shown greyed out, not as warnings.
+    skipped: list = field(default_factory=list)
+    # Checks that could not run because a column they are set up for is missing.
+    skipped_missing: list = field(default_factory=list)
     notes: list = field(default_factory=list)
     engine: str = "demo"
     error: str = ""
@@ -94,18 +101,22 @@ class Report:
     explanations: dict = field(default_factory=dict)
     fix_summary: str = ""
     fix_log: list = field(default_factory=list)
+    # Which columns auto-fix may treat as emails and dates, taken from the rules used.
+    fix_settings: dict = field(default_factory=dict)
+    problem_rows: int = 0
+    rule_counts: dict = field(default_factory=dict)
+    # First PREVIEW_ROWS data rows as text, for the "data X-ray" grid on the report.
+    preview: list = field(default_factory=list)
+    # Built by build_grid(): columns with their health, rows with per-cell marks.
+    grid: dict = field(default_factory=dict)
 
     @property
     def truncated(self) -> bool:
         return self.total > len(self.findings)
 
     @property
-    def band(self) -> str:
-        if self.score >= 90:
-            return "good"
-        if self.score >= 70:
-            return "ok"
-        return "poor"
+    def valid_rows(self) -> int:
+        return max(0, self.rows - self.problem_rows)
 
 
 # --------------------------------------------------------------------------
@@ -140,18 +151,124 @@ def analyze_upload(
 
     # Compute auto-fix summary
     try:
-        fix_summary, fix_log = _compute_fix_summary(data)
+        fix_summary, fix_log = _compute_fix_summary(data, report.fix_settings)
         report.fix_summary = fix_summary
-        report.fix_log = fix_log[:10]
+        report.fix_log = fix_log[:MAX_FIXES_SHOWN]
     except Exception:  # noqa: BLE001, S110
         pass
 
     _finish(report, findings)
+    report.grid = build_grid(report)
     return report
 
 
-def get_cleaned_csv(data: bytes) -> tuple[bytes, str, list[dict]]:
-    """Return (cleaned_csv_bytes, summary_text, change_log) for a previously uploaded file."""
+def build_grid(report: Report) -> dict:
+    """Lay the findings and auto-fixes over the preview rows, cell by cell.
+
+    Rows use spreadsheet numbering (the heading is row 1), the same numbers the
+    findings use, so a finding for "row 7, phone" lands on the right cell.
+    """
+    if not report.preview or not report.columns:
+        return {}
+    rank = {"error": 3, "warning": 2, "info": 1}
+    cells: dict[tuple[str, str], dict] = {}
+    row_marks: dict[str, dict] = {}
+    bad_per_column = {c: 0 for c in report.columns}
+    for i, f in enumerate(report.findings):
+        if not f.row:
+            continue
+        mark = {"sev": f.severity, "fid": i}
+        target = cells if f.column in bad_per_column else row_marks
+        key = (f.row, f.column) if target is cells else f.row
+        if key not in target or rank[f.severity] > rank[target[key]["sev"]]:
+            target[key] = mark
+        if target is cells:
+            bad_per_column[f.column] += 1
+
+    fixes: dict[tuple[str, str], str] = {}
+    removed: set[str] = set()
+    for entry in report.fix_log:
+        try:
+            row = str(int(entry.get("row")) + ROW_OFFSET)
+        except (TypeError, ValueError):
+            continue
+        if entry.get("fix") == "drop duplicate":
+            removed.add(row)
+        elif entry.get("column"):
+            fixes[(row, str(entry["column"]))] = str(entry.get("after", ""))
+
+    # Findings that auto-fix takes care of: a flagged cell it changes, or any finding on a
+    # row it removes. The "After auto-fix" view drops their marks and tags their notes, so
+    # it no longer shows a fixed cell still carrying its red "1" and "1 to fix".
+    resolved: set[int] = set()
+    fixed_per_column = {c: 0 for c in report.columns}
+    for i, f in enumerate(report.findings):
+        if not f.row:
+            continue
+        on_removed_row = f.row in removed
+        on_fixed_cell = f.column in fixed_per_column and (f.row, f.column) in fixes
+        if not (on_removed_row or on_fixed_cell):
+            continue
+        resolved.add(i)
+        if f.column in fixed_per_column:
+            fixed_per_column[f.column] += 1
+
+    rows = []
+    for offset, values in enumerate(report.preview):
+        num = str(offset + ROW_OFFSET)
+        row_cells = []
+        for col, value in zip(report.columns, values):
+            cell = {"v": value}
+            cell.update(cells.get((num, col), {}))
+            if (num, col) in fixes:
+                cell["after"] = fixes[(num, col)]
+            if cell.get("fid") in resolved:
+                cell["resolved"] = True
+            row_cells.append(cell)
+        row = {"num": num, "cells": row_cells, "removed": num in removed, **row_marks.get(num, {})}
+        if row.get("fid") in resolved:
+            row["resolved"] = True
+        rows.append(row)
+
+    total = max(report.rows, 1)
+    columns = [
+        {"name": c, "bad": bad_per_column[c], "fixed": fixed_per_column[c],
+         "health": round(100 * (total - bad_per_column[c]) / total)}
+        for c in report.columns
+    ]
+    return {
+        "columns": columns,
+        "rows": rows,
+        "shown": len(rows),
+        "fixes": len(fixes),
+        "removed": len(removed),
+        "resolved": sorted(resolved),
+    }
+
+
+def fix_settings_from(config: dict | None) -> dict:
+    """The auto-fix settings implied by a rules config: which columns hold emails and dates.
+
+    Without these, auto-fix never lowercased emails or rewrote dates such as 15/01/2022,
+    because it had no way to know which columns they were.
+    """
+    rf = (config or {}).get("range_and_format") or {}
+    if not isinstance(rf, dict):
+        return {}
+    settings = {
+        "email_columns": [str(c) for c in rf.get("email_columns") or []],
+        "date_columns": [str(c) for c in rf.get("date_columns") or []],
+    }
+    if rf.get("date_format"):
+        settings["date_format"] = str(rf["date_format"])
+    return {k: v for k, v in settings.items() if v}
+
+
+def get_cleaned_csv(data: bytes, settings: dict | None = None) -> tuple[bytes, str, list[dict]]:
+    """Return (cleaned_csv_bytes, summary_text, change_log) for a previously uploaded file.
+
+    settings: the report's fix_settings, so the download gets the same fixes the report showed.
+    """
     try:
         autofix = importlib.import_module("src.autofix")
         loader = importlib.import_module("src.loader")
@@ -163,7 +280,7 @@ def get_cleaned_csv(data: bytes) -> tuple[bytes, str, list[dict]]:
         path = folder / "upload.csv"
         path.write_bytes(data)
         df = loader.load_csv(str(path))
-        fixed_df, log = autofix.fix(df)
+        fixed_df, log = autofix.fix(df, **(settings or {}))
         csv_bytes = fixed_df.convert_dtypes().to_csv(index=False).encode("utf-8")
         summary = _summarise_log(log)
         return csv_bytes, summary, log
@@ -201,7 +318,7 @@ def _summarise_log(log: list[dict]) -> str:
     return ", ".join(parts) if parts else "No changes needed"
 
 
-def _compute_fix_summary(data: bytes) -> tuple[str, list[dict]]:
+def _compute_fix_summary(data: bytes, settings: dict | None = None) -> tuple[str, list[dict]]:
     """Run autofix on data and return (summary_text, change_log)."""
     autofix = importlib.import_module("src.autofix")
     loader = importlib.import_module("src.loader")
@@ -211,7 +328,7 @@ def _compute_fix_summary(data: bytes) -> tuple[str, list[dict]]:
         path = folder / "upload.csv"
         path.write_bytes(data)
         df = loader.load_csv(str(path))
-        _, log = autofix.fix(df)
+        _, log = autofix.fix(df, **(settings or {}))
         return _summarise_log(log), log
     finally:
         shutil.rmtree(folder, ignore_errors=True)
@@ -224,6 +341,10 @@ def _finish(report: Report, findings: list[UiFinding]) -> None:
     for f in findings:
         if not f.hint:
             f.hint = DEFAULT_HINTS.get(f.rule, "Review this value and correct it.")
+        f.hint = _plain_date_format(f.hint)
+        f.message = _plain_date_format(f.message)
+    # Whole-file problems first, then by spreadsheet row, so the list reads top to bottom.
+    findings.sort(key=lambda f: (1 if f.row else 0, int(f.row) if f.row.isdigit() else 0))
     counts = {"error": 0, "warning": 0, "info": 0}
     for f in findings:
         counts[f.severity] += 1
@@ -232,6 +353,8 @@ def _finish(report: Report, findings: list[UiFinding]) -> None:
     whole_file = sum(1 for f in findings if not f.row)
     penalty = round(100 * len(rows_hit) / max(report.rows, 1)) + 10 * whole_file
     report.score = max(0, min(100, 100 - penalty))
+    report.problem_rows = len(rows_hit)
+    report.rule_counts = {name: sum(1 for f in findings if f.rule == name) for name in report.rules_run}
 
     report.counts = counts
     report.total = len(findings)
@@ -377,6 +500,34 @@ def _normalise(item, rule: str) -> UiFinding:
     )
 
 
+def _plain_date_format(text: str) -> str:
+    """Show strftime codes the way people write dates: %Y-%m-%d becomes YYYY-MM-DD."""
+    for code, plain in (("%Y", "YYYY"), ("%m", "MM"), ("%d", "DD")):
+        text = text.replace(code, plain)
+    return text
+
+
+def _is_blank(value) -> bool:
+    """True for empty cells, including the NaN pandas uses for a blank."""
+    if value is None:
+        return True
+    try:
+        import pandas as pd
+
+        return bool(pd.isna(value))
+    except (ImportError, TypeError, ValueError):
+        return False
+
+
+def _cell_text(value) -> str:
+    """How a cell is shown in the grid: blanks stay blank, 55000.0 shows as 55000."""
+    if _is_blank(value):
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
 def _row_label(index) -> str:
     try:
         return str(int(index) + 2)  # +2: spreadsheet row, counting the heading line
@@ -406,11 +557,11 @@ def _call_rule(fn, name, df, settings, required):
         if not kwargs.get("subset"):
             kwargs.pop("subset", None)  # an empty list means "check every column"
     elif not any(kwargs.values()):
-        return None, f"The {name} check was skipped because rules.yaml has no settings for it."
+        return None, None  # nothing to check with these rules; listed in report.skipped
     try:
         return _to_findings(fn(df, **kwargs), name), ""
     except KeyError:
-        return None, f"The {name} check was skipped because a column named in rules.yaml is not in your file."
+        return None, "missing-column"  # listed in report.skipped_missing
     except Exception as exc:  # noqa: BLE001 - a crashing rule must not break the page
         return None, f"The {name} check could not run: {exc}. Update service.py to match its inputs."
 
@@ -424,9 +575,15 @@ def _run_engine(engine, filename, data, required, report, config_path=None, auto
         try:
             df = load_fn(str(path))
         except engine["unreadable"] as exc:
-            raise UnreadableUpload(str(exc) or "We could not read this file as a table.") from exc
+            # Messages can include the temporary path; show the user's file name instead.
+            message = str(exc).replace(f"'{path}'", filename).replace(str(path), filename)
+            raise UnreadableUpload(message or "We could not read this file as a table.") from exc
         report.rows = len(df)
         report.columns = [str(c) for c in df.columns]
+        report.preview = [
+            [_cell_text(v) for v in row]
+            for row in df.head(PREVIEW_ROWS).itertuples(index=False, name=None)
+        ]
 
         if ai_config:
             config = ai_config
@@ -442,10 +599,16 @@ def _run_engine(engine, filename, data, required, report, config_path=None, auto
             config, config_note = _load_config()
             if config_note:
                 report.notes.append(config_note)
+        report.fix_settings = fix_settings_from(config)
 
         findings: list[UiFinding] = []
         for name, fn in engine["rules"]:
             found, note = _call_rule(fn, name, df, config.get(name), required)
+            if note is None:
+                report.skipped.append(name)
+            elif note == "missing-column":
+                report.skipped_missing.append(name)
+                note = ""
             if note:
                 report.notes.append(note)
             if found is None:

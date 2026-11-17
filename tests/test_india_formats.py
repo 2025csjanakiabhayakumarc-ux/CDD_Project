@@ -162,3 +162,10 @@ def test_rules_yaml_india_formats_fires_on_sample_employees():
     findings = check(df, phone_columns=india_cfg.get("phone_columns"))
     assert findings
     assert any(f.column == "phone" for f in findings)
+
+
+def test_phone_read_as_float_is_not_reported():
+    # pandas reads a phone column with a blank cell as floats: 9123456780.0
+    df = pd.DataFrame({"phone": [9123456780.0, None, 5876543215.0]})
+    findings = check(df, phone_columns=["phone"])
+    assert [f.row for f in findings] == [2]

@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.2.0 (2026-11-17)
+
+### New features
+- **Landing page** — a home page at `/` with a layered 3D sheet in the hero (your file, what is wrong, the cleaned copy), what each check catches, and how it works. The upload page moved to `/check`.
+- **Marked-up sheet report** — the report shows your data as a sheet with each problem marked on its cell and a numbered note beside it, a row map to jump to any row, and an Original / After auto-fix switch. Burgundy theme with dark mode.
+- **Gemini summary and plain-English rules work again** — on Google's current SDK and Flash-Lite model, with real errors shown in the terminal (details under Fixed).
+
+### Changed
+- **Upload page is one card** — the file, how to check it, and the button, top to bottom. How to check it is three choices side by side: "Choose for me" (auto-detect, the default), "A ready-made rule set", and "Describe it" with Gemini, so the AI option is no longer hidden behind a link. The side panel lists the checks for whatever is chosen, including the two machine-learning checks.
+- **Report opens with one summary panel** — the verdict and row map, a health-score ring, and every check as a badge (passed, how many found, or not run), with "In short" in its own card beside it. Cards, buttons and the notes list have softer corners and layered shadows.
+- **Skipped checks are one quiet line, not warning banners** — the page used to show a yellow banner for every check the chosen rules had no settings for, repeating what the checks row already said.
+- **"Choose for me" runs the machine-learning checks** — number columns are checked for unusual values and name columns (with email) for near-duplicate rows. Before, auto-detect never ran either.
+- **Report puts the summary beside the verdict** — "In short" sits next to the row map instead of floating between the verdict and the data, and is labelled "Written by Gemini" or "Written from the checks". The rule results are one tidy row.
+- **Plain-English fallback summary** — "4 errors and 1 warning" instead of "4 error(s) and 1 warning(s)", and fixes named by what is wrong ("Blank cells in required fields: 1 to fix").
+- **Upload limit raised from 5 MB to 20 MB** — set with `DATAGUARD_MAX_UPLOAD_MB`. A 20 MB file (about 256,000 rows) takes about 30 seconds to check.
+
+### Fixed
+- **"After auto-fix" view still showed fixed problems as broken** — a cell auto-fix had changed kept its red numbered mark and its column still said "1 to fix", and the removed duplicate kept its mark. In that view, problems auto-fix takes care of now lose their marks, column headings say "1 fixed" or "1 left to fix", and their notes are tagged "Fixed by auto-fix".
+- **Auto-fix never fixed emails or dates** — the app called it with no settings, so it did not know which columns held them: `Priya@Company.COM` stayed as it was and `15/01/2022` was never rewritten as `2022-01-15`. The report and both downloads now pass the email and date columns from the rules that were checked.
+- **Estimated values were wrong-looking** — the estimate for a blank salary used phone numbers to find "similar" rows, and came out as 51333.33 in a column of whole numbers, which also made the cleaned CSV write every other salary as `55000.0`. Code columns (phone, pincode, IDs) are now left out, and whole-number columns get whole-number estimates.
+- **"Choose for me" missed problems the Employees rule set catches** — on `samples/employees.csv` it found 3 of the 5. A column was only required when at most 5% of it was blank, so one blank name in 15 rows (6.7%) switched the check off; it is now 20%. Phone numbers were never detected, so the Indian-formats check never ran; columns named like phone/mobile/contact, or full of Indian mobile numbers, now turn it on, and so do pincode columns. An ID column had to be 95% unique, so the duplicate it should catch (E001 twice, 93%) stopped it counting as an ID; it is now 90%.
+- **Every phone number was "invalid" when the column had a blank** — pandas reads such a column as decimals, so 9123456780 became 9123456780.0. The Indian-formats check now drops that `.0` for phones and pincodes.
+- **AI summary and rule writer could never work** — they asked for `gemini-2.0-flash`, which Google shut down on 2026-06-01, through the unmaintained `google-generativeai` package, and every failure fell back silently, so a valid key still showed "Rule-based". They now use the `google-genai` SDK and Google's `gemini-flash-lite-latest` alias on the v1beta API with a 15 s timeout (override with `GEMINI_MODEL`), and print the real error to the terminal before falling back.
+- **The API key could be baked into the Docker image** — the Dockerfile copies the whole folder. A `.dockerignore` now leaves out `.env`, `.git` and virtualenvs, and `docker-compose.yml` passes `.env` in at run time.
+- **"Download cleaned CSV" failed for any real file** — the upload was kept in the session cookie, which browsers drop above about 4 KB, so the download said "No file to clean". The upload is now kept in a temporary folder for an hour and the cookie holds only a random id.
+- **Near-duplicate check was too slow for large files** — it compared every pair of rows in Python (about 15 minutes for 5 MB). It now scores pairs in rapidfuzz's `cdist`, lists the first 500 and counts the rest, and above 20,000 rows compares each row with its 50 neighbours in sorted order, saying so in the report.
+- **Whitespace auto-fix read every cell one at a time** — about 6 seconds on a 5 MB file; it now only touches cells it changes.
+- **Anomaly detection no longer scores code columns** — phone numbers, pincodes, account and roll numbers are labels, not measurements, so `samples/employees.csv` reported its wrong-prefix phone twice: once by `india_formats` and once as "unusual for this column". Columns named explicitly in `numeric_columns` are still scored.
+- **"Typical range" now reads correctly** — it is measured over the ordinary values instead of the whole column, and small decimals keep their decimal places. A column of rates between 0.11 and 0.15 with one 9.80 in it was described as a "typical range" reaching 3.04, and `int()` truncation turned that same column into "range 0-0".
+
 ## 1.1.0 (2026-11-16)
 
 ### New features

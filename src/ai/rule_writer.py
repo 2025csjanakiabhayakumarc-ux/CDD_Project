@@ -8,8 +8,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-TIMEOUT = 8
-_DEFAULT_MODEL = "gemini-2.0-flash"
+from src.ai import gemini
 
 VALID_RULE_KEYS = {
     "required_columns", "missing_values", "duplicates",
@@ -29,15 +28,12 @@ def generate_rules(description: str) -> dict:
     try:
         return _call_gemini(key, description)
     except Exception as exc:  # noqa: BLE001
-        return {"yaml_text": "", "config": None, "error": f"AI error: {exc}", "ai": False}
+        gemini.report_failure("Rule writer", exc)
+        return {"yaml_text": "", "config": None,
+                "error": "AI could not write rules (details in the terminal), using the template", "ai": False}
 
 
 def _call_gemini(key: str, description: str) -> dict:
-    import google.generativeai as genai
-
-    genai.configure(api_key=key)
-    model = genai.GenerativeModel(os.environ.get("GEMINI_MODEL", _DEFAULT_MODEL))
-
     prompt = (
         "You are a data-quality rules generator for DataGuard. "
         "Convert the following plain-English rules into YAML config.\n\n"
@@ -53,8 +49,7 @@ def _call_gemini(key: str, description: str) -> dict:
         "Output ONLY valid YAML, no markdown fences, no explanation."
     )
 
-    response = model.generate_content(prompt, request_options={"timeout": TIMEOUT})
-    yaml_text = response.text.strip()
+    yaml_text = gemini.generate(key, prompt)
     yaml_text = yaml_text.removeprefix("```yaml").removeprefix("```").removesuffix("```").strip()
 
     config = _validate_yaml(yaml_text)

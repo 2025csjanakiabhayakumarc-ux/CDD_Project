@@ -61,3 +61,45 @@ def test_auto_detect_numeric_columns():
 def test_empty_df():
     df = pd.DataFrame()
     assert check(df) == []
+
+
+def test_phone_style_columns_are_not_scored_by_default():
+    """A phone number is not high or low; india_formats already checks it.
+
+    Before this guard, samples/employees.csv reported its wrong-prefix phone
+    number twice: once correctly by india_formats, and once here as
+    "unusual for this column (typical range 8,676,543,211-9,876,543,223)".
+    """
+    df = _employees_df()
+    df["phone"] = [9876543210 + i for i in range(len(df))]
+    df.loc[4, "phone"] = 5876543215  # wrong prefix for an Indian mobile
+
+    assert [f.column for f in check(df)] == []
+
+
+def test_a_named_code_column_is_still_scored_when_asked_for():
+    """Naming a column explicitly is the user's choice and must be honoured."""
+    df = _employees_df()
+    df["phone"] = [9876543210 + i for i in range(len(df))]
+    df.loc[4, "phone"] = 1
+
+    assert [f.row for f in check(df, numeric_columns=["phone"])] == [4]
+
+
+def test_measurement_columns_are_still_scored_by_default():
+    """Guard the guard: the code-word list must not swallow real measurements."""
+    df = _employees_df()
+    df.loc[5, "salary"] = 9_500_000
+
+    assert 5 in {f.row for f in check(df)}
+
+
+def test_small_decimal_values_keep_their_decimals_in_the_range():
+    """int() truncation reported a 0.11-0.15 column as "typical range 0-0"."""
+    rates = [0.11, 0.12, 0.13, 0.11, 0.14, 0.12, 0.13, 0.15,
+             0.12, 0.11, 0.13, 0.14, 0.12, 0.13, 9.80]
+    df = pd.DataFrame({"sku": [f"S{i}" for i in range(len(rates))], "rate": rates})
+
+    message = check(df, numeric_columns=["rate"])[0].message
+    assert "0.11" in message and "0.15" in message
+    assert "range 0–0" not in message

@@ -1,0 +1,12 @@
+# The Dockerfile does "COPY . .", so anything not listed here ends up inside the image.
+# .env holds the Gemini API key: it must never be baked into an image.
+# docker-compose.yml passes it in at run time with env_file instead.
+.env
+.git
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Design exports and local scratch files, not needed to run the app
+Figma/
