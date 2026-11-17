@@ -44,3 +44,31 @@ def test_no_key_columns_returns_empty():
 def test_empty_df():
     df = pd.DataFrame()
     assert check(df, key_columns=["name"]) == []
+
+
+def test_only_the_first_500_pairs_are_listed():
+    import src.fuzzy_duplicates as fd
+    df = pd.DataFrame({"name": [f"Rahul Verma{'a' * (i % 2)}" for i in range(80)]})
+    findings = check(df, key_columns=["name"])
+    pairs = [f for f in findings if f.row is not None]
+    assert len(pairs) == fd.MAX_FINDINGS
+    assert findings[-1].severity == "info"
+    assert "more possible near-duplicates" in findings[-1].message
+
+
+def test_long_values_that_differ_by_one_letter_are_still_reported():
+    """Scores are whole numbers, so 99.6% rounds to 100; that must not count as identical."""
+    long = "x" * 240
+    df = pd.DataFrame({"name": [long + "a", long + "b"]})
+    assert len(check(df, key_columns=["name"])) == 1
+
+
+def test_big_files_compare_neighbours_and_say_so(monkeypatch):
+    import src.fuzzy_duplicates as fd
+    monkeypatch.setattr(fd, "FULL_COMPARE_ROWS", 10)
+    names = [f"Unique Person {i:03d} {chr(97 + i % 26) * 3}" for i in range(40)]
+    names[25] = "Rahul Verma"
+    names[3] = "rahul  verma"
+    findings = check(pd.DataFrame({"name": names}), key_columns=["name"])
+    assert any(f.row == 25 and "row 3" in f.message for f in findings)
+    assert findings[-1].severity == "info" and "nearest to it" in findings[-1].message

@@ -63,7 +63,9 @@
 
     var setReady = function (ready) {
       submit.disabled = !ready;
-      help.textContent = ready ? "Ready to check." : "Choose a file to continue";
+      help.textContent = ready ? "Ready. Most files take a few seconds." : "Choose a file in step 1 first.";
+      var step = $("step-file");
+      if (step) step.classList.toggle("is-done", ready);
     };
     setReady(false);
 
@@ -143,7 +145,7 @@
     // Coming back with the browser's Back button must not leave the button stuck.
     window.addEventListener("pageshow", function () {
       submit.classList.remove("is-busy");
-      submit.querySelector(".btn-label").textContent = "Validate CSV";
+      submit.querySelector(".btn-label").textContent = "Check my file";
     });
   }
 

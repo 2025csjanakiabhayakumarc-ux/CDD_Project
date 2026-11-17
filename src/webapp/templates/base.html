@@ -21,7 +21,7 @@
       </a>
       <nav class="crumbs" aria-label="Steps">{% block crumbs %}{% endblock %}</nav>
       <div class="topbar-end">
-        <span class="local-note" title="{% if ai_on %}Your file is checked by this app and not stored. The AI summary sees only column names and the problems found.{% else %}Your file is checked by this app. It is not sent to any AI service and is not stored.{% endif %}">Your file stays on this computer</span>
+        <span class="local-note" title="{% if ai_on %}Your file is checked by this app and deleted within an hour. The AI summary sees only column names and the problems found.{% else %}Your file is checked by this app. It is not sent to any AI service and is deleted within an hour.{% endif %}">Your file stays on this computer</span>
         <button class="icon-btn" id="theme-toggle" type="button" aria-label="Switch between light and dark mode">
           <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" fill="currentColor"/></svg>
         </button>

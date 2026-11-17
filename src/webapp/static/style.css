@@ -159,7 +159,34 @@ select:hover, input[type="text"]:hover { border-color: var(--ink); }
 .dropzone.has-file .dropzone-title { font-size: 19px; }
 .peek-foot { padding: 10px 18px; font-size: 13px; color: var(--ink-2); border-top: 1px solid var(--line); }
 
-.control-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: end; margin-top: 22px; max-width: 640px; }
+/* Three numbered steps: file, rules, check. A line joins the numbers so the order reads at a glance. */
+.upload-main h1 { font-size: clamp(36px, 4.4vw, 52px); }
+.form-steps { list-style: none; margin: 0; padding: 0; }
+.form-step { position: relative; padding: 0 0 36px 52px; }
+.form-step::before { content: ""; position: absolute; left: 16px; top: 38px; bottom: 4px; width: 2px; background: var(--line-strong); }
+.form-step:last-child { padding-bottom: 0; }
+.form-step:last-child::before { display: none; }
+.step-title { display: flex; align-items: center; min-height: 34px; margin: 0 0 14px; font: 650 21px/1.2 var(--display); letter-spacing: -0.01em; }
+.step-title label { cursor: pointer; }
+.step-num { position: absolute; left: 0; top: 0; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%;
+  background: var(--btn); color: #fff; font: 700 15px/1 var(--body); }
+.form-step.is-done .step-num { background: var(--ok); color: var(--sheet); font-size: 0; }
+.form-step.is-done .step-num::after { content: "✓"; font-size: 16px; }
+#step-rules select { max-width: 520px; }
+.pick-btn { display: inline-flex; align-items: center; min-height: 40px; padding: 0 18px; border-radius: 6px; background: var(--btn); color: #fff; font-weight: 600; }
+.dropzone:hover .pick-btn { background: var(--btn-hover); }
+.drop-limit { margin-left: 10px; font-size: 14px; }
+#drop-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.dropzone.has-file #drop-sub { margin-top: 0; }
+.form-step .samples { margin-top: 14px; padding-top: 0; border-top: 0; font-size: 15px; }
+.rules-peek .rule-list { margin-top: 10px; }
+.next-list { list-style: none; counter-reset: next; margin: 14px 0 0; padding: 0; border-top: 1px solid var(--line-strong); }
+.next-list li { counter-increment: next; position: relative; padding: 12px 0 12px 32px; border-bottom: 1px solid var(--line); }
+.next-list li::before { content: counter(next); position: absolute; left: 0; top: 12px; width: 22px; height: 22px; display: grid; place-items: center;
+  border: 1.5px solid var(--wine); border-radius: 50%; color: var(--wine); font-size: 12px; font-weight: 700; }
+.next-list strong { display: block; }
+.next-list span { display: block; font-size: 14px; color: var(--ink-2); }
+.side-note { margin-top: 18px; font-size: 14px; color: var(--ink-2); }
 .helper { margin-top: 8px; font-size: 14px; color: var(--ink-2); }
 .options { margin-top: 14px; max-width: 640px; }
 .options summary, .how summary, .disclosure summary { cursor: pointer; color: var(--wine); text-decoration: underline; text-underline-offset: 3px; width: fit-content; }
