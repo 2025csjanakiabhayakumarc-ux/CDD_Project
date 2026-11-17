@@ -292,6 +292,17 @@ select:hover, input[type="text"]:hover { border-color: var(--ink); }
 .fixlog { margin-top: 56px; }
 .fixlog-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; margin-bottom: 14px; }
 .fixlog-head .muted { margin-top: 2px; font-size: 14.5px; max-width: 70ch; }
+.fixlog-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.log .is-estimated td { background: var(--warn-soft); }
+.est-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border: 1px solid var(--warn-fill); border-radius: 999px; font-size: 12px; color: var(--warn); }
+
+/* AI summary and plain-English rules (shown only when they ran) */
+.ai-note { margin-top: 28px; padding: 18px 22px; background: var(--sheet); border: 1px solid var(--line-strong); border-left: 4px solid var(--wine); border-radius: 3px; max-width: 80ch; }
+.ai-note p { margin: 8px 0 0; }
+.ai-tag { margin-left: 8px; font: 500 12px/1 var(--body); letter-spacing: 0; color: var(--ink-2); border: 1px solid var(--line-strong); border-radius: 999px; padding: 3px 8px; vertical-align: middle; }
+.ai-fixes { margin: 10px 0 0; padding-left: 22px; }
+.yaml { margin: 12px 0 0; padding: 14px; background: var(--sheet-2); border: 1px solid var(--line); border-radius: 3px; overflow-x: auto; font-size: 13.5px; }
+.options textarea { width: 100%; padding: 10px 14px; background: var(--sheet); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 6px; font: inherit; resize: vertical; }
 .log .before { color: var(--ink-2); text-decoration: line-through; }
 
 /* ---------- Error page ---------- */

@@ -35,6 +35,8 @@ RULES = (
     ("duplicates", ("src.rules.duplicates", "src.duplicates"), ("check", "find_duplicates")),
     ("range_and_format", ("src.rules.range_and_format",), ("check",)),
     ("india_formats", ("src.rules.india_formats",), ("check",)),
+    ("anomalies", ("src.anomalies",), ("check",)),
+    ("near_duplicates", ("src.fuzzy_duplicates",), ("check",)),
 )
 RULE_NAMES = tuple(name for name, _modules, _functions in RULES)
 
@@ -120,6 +122,7 @@ def analyze_upload(
     required: list[str] | None = None,
     config_path: str | None = None,
     auto_detect: bool = False,
+    ai_config: dict | None = None,
 ) -> Report:
     """Check an uploaded file and return a Report for the pages to show."""
     required = required or []
@@ -131,6 +134,7 @@ def analyze_upload(
             findings = _run_engine(
                 engine, filename, data, required, report,
                 config_path=config_path, auto_detect=auto_detect,
+                ai_config=ai_config,
             )
         else:
             report.engine = "demo"
@@ -213,13 +217,13 @@ def build_grid(report: Report) -> dict:
     }
 
 
-def get_cleaned_csv(data: bytes) -> tuple[bytes, str]:
-    """Return (cleaned_csv_bytes, summary_text) for a previously uploaded file."""
+def get_cleaned_csv(data: bytes) -> tuple[bytes, str, list[dict]]:
+    """Return (cleaned_csv_bytes, summary_text, change_log) for a previously uploaded file."""
     try:
         autofix = importlib.import_module("src.autofix")
         loader = importlib.import_module("src.loader")
     except ImportError:
-        return data, ""
+        return data, "", []
 
     folder = Path(tempfile.mkdtemp(prefix="dataguard_fix_"))
     try:
@@ -227,15 +231,41 @@ def get_cleaned_csv(data: bytes) -> tuple[bytes, str]:
         path.write_bytes(data)
         df = loader.load_csv(str(path))
         fixed_df, log = autofix.fix(df)
-        # convert_dtypes() keeps whole numbers as integers, so a column with a blank
-        # cell (read as float) is written as 55000, not 55000.0.
         csv_bytes = fixed_df.convert_dtypes().to_csv(index=False).encode("utf-8")
-        cells_fixed = sum(1 for e in log if e["fix"] != "drop duplicate")
-        dups_removed = sum(1 for e in log if e["fix"] == "drop duplicate")
-        summary = f"{cells_fixed} cells fixed, {dups_removed} duplicate rows removed"
-        return csv_bytes, summary
+        summary = _summarise_log(log)
+        return csv_bytes, summary, log
     finally:
         shutil.rmtree(folder, ignore_errors=True)
+
+
+def get_changes_csv(log: list[dict]) -> bytes:
+    """Build a CSV of changes from a fix log, marking estimated values."""
+    header = "Row,Column,Old Value,New Value,Method,Estimated\n"
+    lines = [header]
+    for entry in log:
+        row = entry.get("row", "")
+        col = entry.get("column", "")
+        before = str(entry.get("before", "")).replace('"', '""')
+        after = str(entry.get("after", "")).replace('"', '""')
+        method = entry.get("fix", "")
+        estimated = "yes" if entry.get("estimated") else "no"
+        lines.append(f'{row},"{col}","{before}","{after}","{method}",{estimated}\n')
+    return "".join(lines).encode("utf-8")
+
+
+def _summarise_log(log: list[dict]) -> str:
+    """Build a human-readable summary from a fix log."""
+    cells_fixed = sum(1 for e in log if e["fix"] != "drop duplicate" and not e.get("estimated"))
+    dups_removed = sum(1 for e in log if e["fix"] == "drop duplicate")
+    estimated = sum(1 for e in log if e.get("estimated"))
+    parts = []
+    if cells_fixed:
+        parts.append(f"{cells_fixed} cell{'s' if cells_fixed != 1 else ''} fixed")
+    if estimated:
+        parts.append(f"{estimated} value{'s' if estimated != 1 else ''} estimated (marked)")
+    if dups_removed:
+        parts.append(f"{dups_removed} duplicate row{'s' if dups_removed != 1 else ''} removed")
+    return ", ".join(parts) if parts else "No changes needed"
 
 
 def _compute_fix_summary(data: bytes) -> tuple[str, list[dict]]:
@@ -249,10 +279,7 @@ def _compute_fix_summary(data: bytes) -> tuple[str, list[dict]]:
         path.write_bytes(data)
         df = loader.load_csv(str(path))
         _, log = autofix.fix(df)
-        cells_fixed = sum(1 for e in log if e["fix"] != "drop duplicate")
-        dups_removed = sum(1 for e in log if e["fix"] == "drop duplicate")
-        summary = f"{cells_fixed} cells fixed, {dups_removed} duplicate rows removed"
-        return summary, log
+        return _summarise_log(log), log
     finally:
         shutil.rmtree(folder, ignore_errors=True)
 
@@ -489,7 +516,7 @@ def _call_rule(fn, name, df, settings, required):
         return None, f"The {name} check could not run: {exc}. Update service.py to match its inputs."
 
 
-def _run_engine(engine, filename, data, required, report, config_path=None, auto_detect=False):
+def _run_engine(engine, filename, data, required, report, config_path=None, auto_detect=False, ai_config=None):
     folder = Path(tempfile.mkdtemp(prefix="dataguard_"))
     try:
         path = folder / ("upload" + (Path(filename).suffix or ".csv"))
@@ -508,7 +535,9 @@ def _run_engine(engine, filename, data, required, report, config_path=None, auto
             for row in df.head(PREVIEW_ROWS).itertuples(index=False, name=None)
         ]
 
-        if auto_detect:
+        if ai_config:
+            config = ai_config
+        elif auto_detect:
             config, explanations = _infer_config(df)
             report.auto_detect = True
             report.explanations = explanations

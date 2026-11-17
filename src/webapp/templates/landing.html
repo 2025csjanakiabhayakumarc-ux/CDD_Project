@@ -40,7 +40,7 @@
       <a class="btn btn-primary btn-lg" href="{{ url_for('index') }}">Check a file</a>
       <a class="btn btn-secondary btn-lg" href="{{ url_for('try_sample', name='employees') }}">Open a sample report</a>
     </div>
-    <p class="hero-note">Runs on this computer. Nothing is sent to an AI service.</p>
+    <p class="hero-note">Runs on this computer. {% if ai_on %}Only the list of problems goes to the AI summary, never your file.{% else %}Nothing is sent to an AI service.{% endif %}</p>
   </div>
 
   <div class="stack-stage" id="stack-stage" role="img"

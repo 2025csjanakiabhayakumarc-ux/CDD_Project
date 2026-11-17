@@ -11,7 +11,9 @@
   'missing_values': 'Missing values',
   'duplicates': 'Duplicate rows',
   'range_and_format': 'Ranges and formats',
-  'india_formats': 'Indian formats'
+  'india_formats': 'Indian formats',
+  'anomalies': 'Unusual rows (ML)',
+  'near_duplicates': 'Near-duplicates (ML)'
 } %}
 
 {% block content %}
@@ -83,6 +85,23 @@
   </section>
 
   {% for note in report.notes %}<div class="banner banner-warning" role="status">{{ note }}</div>{% endfor %}
+
+  {% if ai_summary and report.total %}
+  <section class="ai-note" aria-labelledby="ai-title">
+    <h2 id="ai-title" class="section-title">In short <span class="ai-tag">{{ 'Written by Gemini' if ai_summary.ai else 'Rule-based' }}</span></h2>
+    <p>{{ ai_summary.summary }}</p>
+    {% if ai_summary.top_fixes %}
+    <ol class="ai-fixes">{% for fix in ai_summary.top_fixes %}<li>{{ fix }}</li>{% endfor %}</ol>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if ai_rules_result %}
+  <details class="disclosure">
+    <summary>Rules written from your description{% if ai_rules_result.error %}: {{ ai_rules_result.error }}{% endif %}</summary>
+    {% if ai_rules_result.yaml_text %}<pre class="yaml"><code>{{ ai_rules_result.yaml_text }}</code></pre>{% endif %}
+  </details>
+  {% endif %}
 
   {# ---------------- Sheet and notes ---------------- #}
   <div class="workspace {% if not g %}no-grid{% endif %} {% if report.total == 0 %}is-clear{% endif %}">
@@ -186,15 +205,18 @@
     <div class="fixlog-head">
       <div><h2 id="fix-title" class="section-title">What auto-fix changes</h2>
         <p class="muted">{{ report.fix_summary }}. Only safe changes are made for you. Problems that need a person, such as a missing name, are left alone.</p></div>
-      <a class="btn btn-secondary" href="{{ url_for('download_cleaned') }}">Download cleaned CSV</a>
+      <div class="fixlog-actions">
+        <a class="btn btn-quiet" href="{{ url_for('download_changes') }}">Download list of changes</a>
+        <a class="btn btn-secondary" href="{{ url_for('download_cleaned') }}">Download cleaned CSV</a>
+      </div>
     </div>
     <div class="sheet table-scroll">
       <table class="grid log">
         <thead><tr><th scope="col">Row</th><th scope="col">Column</th><th scope="col">Before</th><th scope="col">After</th><th scope="col">Change</th></tr></thead>
         <tbody>
           {% for e in report.fix_log %}
-          <tr><td>{% if e.row is not none %}{{ e.row|int + 2 }}{% endif %}</td><td>{{ e.column or 'whole row' }}</td>
-            <td class="before">{{ e.before }}</td><td>{{ e.after }}</td><td>{{ e.fix|capitalize }}</td></tr>
+          <tr{% if e.get('estimated') %} class="is-estimated"{% endif %}><td>{% if e.row is not none %}{{ e.row|int + 2 }}{% endif %}</td><td>{{ e.column or 'whole row' }}</td>
+            <td class="before">{{ e.before }}</td><td>{{ e.after }}</td><td>{{ e.fix|capitalize }}{% if e.get('estimated') %} <span class="est-tag" title="Filled in from similar rows. Check it before you rely on it.">estimated</span>{% endif %}</td></tr>
           {% endfor %}
         </tbody>
       </table>

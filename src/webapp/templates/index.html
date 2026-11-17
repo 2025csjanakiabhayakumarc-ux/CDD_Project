@@ -60,6 +60,15 @@
         <label class="field-label" for="required">Column names, separated by commas</label>
         <input id="required" name="required" type="text" placeholder="student_id, name, attendance" autocomplete="off">
       </details>
+
+      {% if ai_on %}
+      <details class="options">
+        <summary>Describe your rules in plain English (AI)</summary>
+        <label class="field-label" for="ai_rules">For example: phone must be an Indian mobile, email required, attendance 0 to 100</label>
+        <textarea id="ai_rules" name="ai_rules" rows="3" placeholder="phone must be an Indian mobile, email required, salary must be positive"></textarea>
+        <p class="helper">Only this sentence is sent to Gemini, not your file. If the AI can't write valid rules, the rules chosen above are used.</p>
+      </details>
+      {% endif %}
     </form>
 
     <p class="samples">No file to hand? Open
@@ -79,7 +88,7 @@
       <h2 id="why-title" class="side-title">Why not paste it into a chatbot?</h2>
       <dl class="why">
         <dt>Personal data stays here</dt>
-        <dd>Names, phone numbers and dates of birth are checked by this app. Nothing is sent to an AI service.</dd>
+        <dd>Names, phone numbers and dates of birth are checked by this app. {% if ai_on %}The AI summary only sees column names and the problems found, never the whole file.{% else %}Nothing is sent to an AI service.{% endif %}</dd>
         <dt>Same file, same answer</dt>
         <dd>The rules live in a YAML file, so every run checks the same things the same way.</dd>
         <dt>Every row, every change on record</dt>
