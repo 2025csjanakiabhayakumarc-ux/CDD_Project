@@ -125,7 +125,7 @@ def create_app() -> Flask:
             return upload_page("That file type is not supported. Please upload a .csv or .xlsx file.", 400)
 
         choice = request.form.get("template", "default")
-        if request.form.get("rule_mode") == "auto":  # older form field, still honoured
+        if request.form.get("rule_mode") in ("auto", "ai"):  # "ai" falls back to auto if Gemini fails
             choice = "auto"
         required = [c.strip() for c in request.form.get("required", "").split(",") if c.strip()]
         ai_rules_text = request.form.get("ai_rules", "").strip()

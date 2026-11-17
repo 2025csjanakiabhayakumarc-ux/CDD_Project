@@ -199,3 +199,11 @@ def test_report_page_shows_the_ai_summary(monkeypatch):
     assert "Written by Gemini" in page
     assert "Two problems." in page
     assert "Rule-based" not in page
+
+
+def test_fallback_wording_has_no_bracketed_plurals(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    result = summarise(_report_with_findings())
+    text = " ".join([result["summary"], *result["top_fixes"]])
+    assert "(s)" not in text
+    assert "1 warning" in result["summary"]

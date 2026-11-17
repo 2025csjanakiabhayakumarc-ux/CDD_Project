@@ -3,7 +3,9 @@
 ## Unreleased
 
 ### Changed
-- **Upload page is three numbered steps** — choose your file, pick the rules, check it. "Let DataGuard choose" (auto-detect) is the default, `rules.yaml` is labelled "Student records", and the sidebar says what happens next instead of repeating the landing page.
+- **Upload page is one card** — the file, how to check it, and the button, top to bottom. How to check it is three choices side by side: "Choose for me" (auto-detect, the default), "A ready-made rule set", and "Describe it" with Gemini, so the AI option is no longer hidden behind a link. The side panel lists the checks for whatever is chosen, including the two machine-learning checks.
+- **Report puts the summary beside the verdict** — "In short" sits next to the row map instead of floating between the verdict and the data, and is labelled "Written by Gemini" or "Written from the checks". The rule results are one tidy row.
+- **Plain-English fallback summary** — "4 errors and 1 warning" instead of "4 error(s) and 1 warning(s)", and fixes named by what is wrong ("Blank cells in required fields: 1 to fix").
 - **Upload limit raised from 5 MB to 20 MB** — set with `DATAGUARD_MAX_UPLOAD_MB`. A 20 MB file (about 256,000 rows) takes about 30 seconds to check.
 
 ### Fixed

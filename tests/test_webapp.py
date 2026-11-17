@@ -277,3 +277,21 @@ def test_download_refuses_a_made_up_upload_id(client):
 def test_upload_limit_is_shown_on_the_page(client):
     limit = importlib.import_module("src.webapp.app").MAX_UPLOAD_MB
     assert f"Up to {limit} MB".encode() in client.get("/check").data
+
+
+def test_upload_page_offers_three_ways_to_pick_rules(client):
+    page = client.get("/check").get_data(as_text=True)
+    for mode in ("auto", "set", "ai"):
+        assert f'name="rule_mode" value="{mode}"' in page
+    assert 'value="auto" checked' in page  # choosing for you is the default
+
+
+def test_ai_mode_falls_back_to_choosing_rules_from_the_columns(client):
+    response = upload(client, b"name,email\nAsha,asha@example.com\n", rule_mode="ai", template="employees")
+    assert response.status_code == 200
+    assert "Let DataGuard choose" in response.get_data(as_text=True)
+
+
+def test_rule_set_mode_uses_the_picked_template(client):
+    response = upload(client, b"name,email\nAsha,asha@example.com\n", rule_mode="set", template="employees")
+    assert "Employees" in response.get_data(as_text=True)

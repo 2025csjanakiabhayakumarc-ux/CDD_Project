@@ -35,7 +35,9 @@
   </header>
 
   {# ---------------- Verdict ---------------- #}
-  <section class="verdict {{ 'is-clear' if report.total == 0 else ('is-bad' if errors else 'is-warn') }}" aria-label="Validation Summary">
+  {% set show_ai = ai_summary and report.total %}
+  <section class="verdict {{ 'is-clear' if report.total == 0 else ('is-bad' if errors else 'is-warn') }}{{ ' has-ai' if show_ai }}" aria-label="Validation Summary">
+    <div class="verdict-main">
     <p class="verdict-line">
       {% if report.total == 0 %}
         <strong>All clear.</strong> Every one of the {{ report.rows }} row{{ '' if report.rows == 1 else 's' }} passed. This file is ready to use.
@@ -61,6 +63,25 @@
       <p class="rowmap-legend">One block per row{% if errors %}, <span class="key key-err"></span>error{% endif %}{% if warnings %}, <span class="key key-warn"></span>warning{% endif %}. Select a block to jump to that row.</p>
     </div>
     {% endif %}
+    <details class="how">
+        <summary>Health score {{ report.score }} out of 100</summary>
+        <p>Start at 100. Take off the percent of rows with a problem, and 10 for each problem that affects the whole file, such as a missing column.</p>
+      </details>
+    </div>
+
+    {% if show_ai %}
+    <aside class="ai-note" aria-labelledby="ai-title">
+      <div class="ai-note-head">
+        <h2 id="ai-title" class="side-title">In short</h2>
+        {% if ai_summary.ai %}<span class="ai-badge"><svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><path d="M6 0c.4 3.2 2.8 5.6 6 6-3.2.4-5.6 2.8-6 6-.4-3.2-2.8-5.6-6-6 3.2-.4 5.6-2.8 6-6Z" fill="currentColor"/></svg>Written by Gemini</span>
+        {% else %}<span class="ai-source">Written from the checks</span>{% endif %}
+      </div>
+      <p>{{ ai_summary.summary }}</p>
+      {% if ai_summary.top_fixes %}
+      <ol class="ai-fixes" aria-label="Fix these first">{% for fix in ai_summary.top_fixes %}<li>{{ fix }}</li>{% endfor %}</ol>
+      {% endif %}
+    </aside>
+    {% endif %}
 
     <div class="verdict-foot">
       <ul class="rule-line" aria-label="Rules checked">
@@ -77,24 +98,10 @@
           {% endif %}
         {% endfor %}
       </ul>
-      <details class="how">
-        <summary>Health score {{ report.score }} out of 100</summary>
-        <p>Start at 100. Take off the percent of rows with a problem, and 10 for each problem that affects the whole file, such as a missing column.</p>
-      </details>
     </div>
   </section>
 
   {% for note in report.notes %}<div class="banner banner-warning" role="status">{{ note }}</div>{% endfor %}
-
-  {% if ai_summary and report.total %}
-  <section class="ai-note" aria-labelledby="ai-title">
-    <h2 id="ai-title" class="section-title">In short <span class="ai-tag">{{ 'Written by Gemini' if ai_summary.ai else 'Rule-based' }}</span></h2>
-    <p>{{ ai_summary.summary }}</p>
-    {% if ai_summary.top_fixes %}
-    <ol class="ai-fixes">{% for fix in ai_summary.top_fixes %}<li>{{ fix }}</li>{% endfor %}</ol>
-    {% endif %}
-  </section>
-  {% endif %}
 
   {% if ai_rules_result %}
   <details class="disclosure">
