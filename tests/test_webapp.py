@@ -33,7 +33,13 @@ def upload(client, content, name="data.csv", **extra):
 def test_home_page_loads(client):
     response = client.get("/")
     assert response.status_code == 200
-    assert b"Check my file" in response.data
+    assert b'href="/check"' in response.data  # the landing page leads to the upload page
+
+
+def test_upload_page_loads(client):
+    response = client.get("/check")
+    assert response.status_code == 200
+    assert b"Validate CSV" in response.data
 
 
 def test_health_route(client):
@@ -55,7 +61,7 @@ def test_wrong_file_type_is_rejected(client):
 def test_empty_file_shows_error_page(client):
     response = upload(client, b"   \n")
     assert response.status_code == 422
-    assert b"could not read" in response.data
+    assert b"File could not be read" in response.data
 
 
 def test_clean_file_shows_all_clear(client):
@@ -179,3 +185,68 @@ def test_employees_clean_sample_scores_100_with_employees_template(monkeypatch):
     assert "india_formats" in report.rules_run  # the employees template is really in use
     assert report.findings == []
     assert report.score == 100
+
+
+def test_upload_page_lists_rule_templates_without_server_paths(client):
+    response = client.get("/check")
+    assert b'value="employees"' in response.data
+    assert b'value="auto"' in response.data
+    assert b"templates_rules" not in response.data  # file paths stay on the server
+
+
+def test_employees_template_runs_its_own_rules(monkeypatch):
+    """The employees template must run its own rules (incl. india_formats) when picked."""
+    pytest.importorskip("src.engine")
+    monkeypatch.delenv("DATAGUARD_UI_DEMO", raising=False)
+    app = create_app()
+    root = pathlib.Path(__file__).resolve().parents[1]
+    data = (root / "samples" / "employees.csv").read_bytes()
+    response = app.test_client().post(
+        "/validate", data={"file": (io.BytesIO(data), "employees.csv"), "template": "employees"},
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 200
+    assert b"5876543215" in response.data  # the India phone check ran
+    assert b"Validation Summary" in response.data
+
+
+def test_unreadable_file_message_hides_server_paths(monkeypatch):
+    pytest.importorskip("src.engine")
+    monkeypatch.delenv("DATAGUARD_UI_DEMO", raising=False)
+    report = service.analyze_upload("mine.csv", b"\x00\x01\x02 not a csv")
+    assert report.error
+    assert "mine.csv" in report.error
+    assert "dataguard_" not in report.error and "Temp" not in report.error
+
+
+def test_grid_marks_each_problem_on_its_own_cell(monkeypatch):
+    """The data X-ray grid puts each finding on the cell it is about, in spreadsheet rows."""
+    pytest.importorskip("src.engine")
+    monkeypatch.delenv("DATAGUARD_UI_DEMO", raising=False)
+    root = pathlib.Path(__file__).resolve().parents[1]
+    report = service.analyze_upload(
+        "employees.csv", (root / "samples" / "employees.csv").read_bytes(),
+        config_path=str(root / "templates_rules" / "employees.yaml"),
+    )
+    grid = report.grid
+    marked = {
+        (row["num"], report.columns[i]): cell["sev"]
+        for row in grid["rows"] for i, cell in enumerate(row["cells"]) if cell.get("sev")
+    }
+    assert marked == {("4", "email"): "error", ("5", "name"): "error",
+                      ("6", "join_date"): "error", ("7", "phone"): "error"}
+    duplicate = next(row for row in grid["rows"] if row["num"] == "13")
+    assert duplicate["sev"] == "warning" and duplicate["removed"]  # auto-fix drops it
+    assert [f.row for f in report.findings] == sorted((f.row for f in report.findings), key=int)
+    assert "%Y" not in " ".join(f.hint for f in report.findings)  # dates shown as YYYY-MM-DD
+
+
+def test_sample_links_open_a_report(monkeypatch):
+    pytest.importorskip("src.engine")
+    monkeypatch.delenv("DATAGUARD_UI_DEMO", raising=False)
+    client = create_app().test_client()
+    messy = client.get("/try/employees")
+    assert messy.status_code == 200 and b"5876543215" in messy.data
+    clean = client.get("/try/employees_clean")
+    assert clean.status_code == 200 and b'data-total="0"' in clean.data
+    assert client.get("/try/not-a-sample").status_code == 404
