@@ -138,3 +138,64 @@ def test_generate_rules_api_error(monkeypatch):
         result = generate_rules("some rules")
     assert result["ai"] is False
     assert result["config"] is None
+
+
+# ---- Gemini client (src/ai/gemini.py) ----
+
+def test_failure_is_printed_with_model_and_without_the_key(monkeypatch, capsys):
+    monkeypatch.setenv("GEMINI_API_KEY", "secret-key-123")
+    monkeypatch.setenv("GEMINI_MODEL", "some-model")
+    with patch("src.ai.summary._call_gemini",
+               side_effect=RuntimeError("404 model not found for key secret-key-123")):
+        result = summarise(_report_with_findings())
+    err = capsys.readouterr().err
+    assert result["ai"] is False
+    assert "Summary failed with model 'some-model'" in err
+    assert "404 model not found" in err
+    assert "secret-key-123" not in err
+
+
+def test_rule_writer_failure_is_printed(monkeypatch, capsys):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    with patch("src.ai.rule_writer._call_gemini", side_effect=RuntimeError("API key not valid")):
+        result = generate_rules("email required")
+    assert "API key not valid" in capsys.readouterr().err
+    assert "terminal" in result["error"]
+
+
+def test_model_comes_from_env_or_the_current_flash_alias(monkeypatch):
+    from src.ai import gemini
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    assert gemini.model_name() == "gemini-flash-latest"
+    monkeypatch.setenv("GEMINI_MODEL", "  pinned-model  ")
+    assert gemini.model_name() == "pinned-model"
+
+
+def test_generate_uses_the_google_genai_client(monkeypatch):
+    from src.ai import gemini
+    monkeypatch.setenv("GEMINI_MODEL", "pinned-model")
+    with patch("google.genai.Client") as client_cls:
+        client_cls.return_value.models.generate_content.return_value.text = "  Looks fine.  "
+        assert gemini.generate("k", "hello") == "Looks fine."
+    kwargs = client_cls.return_value.models.generate_content.call_args.kwargs
+    assert kwargs == {"model": "pinned-model", "contents": "hello"}
+    assert client_cls.call_args.kwargs["api_key"] == "k"
+
+
+def test_summary_parses_the_reply(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    reply = "Mostly clean, two bad cells.\n\n1. Fix the email in row 4.\n2. Fill the name in row 5."
+    with patch("src.ai.gemini.generate", return_value=reply):
+        result = summarise(_report_with_findings())
+    assert result == {"summary": "Mostly clean, two bad cells.",
+                      "top_fixes": ["Fix the email in row 4.", "Fill the name in row 5."], "ai": True}
+
+
+def test_report_page_shows_the_ai_summary(monkeypatch):
+    from src.webapp.app import create_app
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    with patch("src.ai.gemini.generate", return_value="Two problems.\n\n1. Fix row 4."):
+        page = create_app().test_client().get("/try/employees").get_data(as_text=True)
+    assert "Written by Gemini" in page
+    assert "Two problems." in page
+    assert "Rule-based" not in page
