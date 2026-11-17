@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Fixed
+- **AI summary and rule writer could never work** — they asked for `gemini-2.0-flash`, which Google shut down on 2026-06-01, through the unmaintained `google-generativeai` package, and every failure fell back silently, so a valid key still showed "Rule-based". They now use the `google-genai` SDK and Google's `gemini-flash-latest` alias (override with `GEMINI_MODEL`), and print the real error to the terminal before falling back.
+- **The API key could be baked into the Docker image** — the Dockerfile copies the whole folder. A `.dockerignore` now leaves out `.env`, `.git` and virtualenvs, and `docker-compose.yml` passes `.env` in at run time.
 - **Anomaly detection no longer scores code columns** — phone numbers, pincodes, account and roll numbers are labels, not measurements, so `samples/employees.csv` reported its wrong-prefix phone twice: once by `india_formats` and once as "unusual for this column". Columns named explicitly in `numeric_columns` are still scored.
 - **"Typical range" now reads correctly** — it is measured over the ordinary values instead of the whole column, and small decimals keep their decimal places. A column of rates between 0.11 and 0.15 with one 9.80 in it was described as a "typical range" reaching 3.04, and `int()` truncation turned that same column into "range 0-0".
 

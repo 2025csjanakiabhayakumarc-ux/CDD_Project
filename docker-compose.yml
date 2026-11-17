@@ -1,7 +1,12 @@
-
 services:
   dataguard:
     build: .
     container_name: dataguard
     ports:
       - "5000:5000"
+    # The Gemini key is read from .env when the container starts, not copied into the
+    # image (.dockerignore leaves .env out). Without a .env the app still runs, using
+    # its rule-based summary.
+    env_file:
+      - path: .env
+        required: false

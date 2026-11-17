@@ -11,11 +11,10 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING
 
+from src.ai import gemini
+
 if TYPE_CHECKING:
     from src.webapp.service import Report
-
-TIMEOUT = 8
-_DEFAULT_MODEL = "gemini-2.0-flash"
 
 
 def summarise(report: Report) -> dict:
@@ -30,7 +29,8 @@ def summarise(report: Report) -> dict:
     prompt = _build_prompt(report)
     try:
         return _call_gemini(key, prompt)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        gemini.report_failure("Summary", exc)
         return _fallback(report)
 
 
@@ -54,12 +54,7 @@ def _build_prompt(report: Report) -> str:
 
 
 def _call_gemini(key: str, prompt: str) -> dict:
-    import google.generativeai as genai
-
-    genai.configure(api_key=key)
-    model = genai.GenerativeModel(os.environ.get("GEMINI_MODEL", _DEFAULT_MODEL))
-    response = model.generate_content(prompt, request_options={"timeout": TIMEOUT})
-    text = response.text.strip()
+    text = gemini.generate(key, prompt)
 
     parts = text.split("\n\n", 1)
     summary = parts[0].strip()
