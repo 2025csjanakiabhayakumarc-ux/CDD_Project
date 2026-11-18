@@ -185,7 +185,9 @@ def test_text_columns_with_a_blank_are_still_trimmed():
     """pandas calls a text column with a None "not text", so it was never trimmed."""
     df = pd.DataFrame({"name": ["  Asha  ", None, "Ravi "]})
     fixed, log = fix(df)
-    assert fixed["name"].tolist() == ["Asha", None, "Ravi"]
+    names = fixed["name"].tolist()
+    # The blank stays blank. Older pandas keeps it as None, newer pandas (CI) as NaN.
+    assert names[0] == "Asha" and names[2] == "Ravi" and pd.isna(names[1])
     assert [e["fix"] for e in log] == ["trim whitespace", "trim whitespace"]
 
 
