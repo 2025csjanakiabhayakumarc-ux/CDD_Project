@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.2 (2026-11-18)
 
 ### Changed
 - **Blank numbers are left blank, not averaged** — a filled-in salary looks like real data, so auto-fix no longer estimates blank numbers (KNN). They stay blank and the checks flag them for a person.
