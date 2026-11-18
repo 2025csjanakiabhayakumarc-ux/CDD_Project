@@ -147,3 +147,35 @@ def test_decimal_columns_keep_two_places():
     df = pd.DataFrame({"rate": [0.11, 0.12, 0.13, None]})
     _, log = fix(df)
     assert log[0]["after"] == "0.12"
+
+
+# ---- large files: the same fixes, done column-at-a-time ----
+
+def test_large_file_blanks_are_estimated_from_a_sample_of_rows():
+    import numpy as np
+
+    from src import autofix
+    rng = np.random.default_rng(0)
+    n = autofix.KNN_DONORS * 3
+    df = pd.DataFrame({"age": rng.integers(21, 60, n).astype(float),
+                       "salary": rng.integers(25_000, 150_000, n).astype(float)})
+    df.loc[::50, "salary"] = None
+    fixed, log = autofix.fix(df)
+    filled = [e for e in log if e["fix"] == "KNN imputation"]
+    assert len(filled) == n // 50
+    assert fixed["salary"].notna().all()
+    assert fixed["salary"].between(25_000, 150_000).all()
+
+
+def test_mixed_date_formats_are_normalised_and_correct_ones_left_alone():
+    df = pd.DataFrame({"d": ["2024-01-05", "05/01/2024", "05-01-2024", "", "not a date", "05/01/2024"]})
+    _, log = fix(df, date_columns=["d"])
+    dates = [(e["row"], e["before"], e["after"]) for e in log if e["fix"] == "normalize date"]
+    assert dates == [(1, "05/01/2024", "2024-01-05"), (2, "05-01-2024", "2024-01-05"), (5, "05/01/2024", "2024-01-05")]
+
+
+def test_emails_lowercased_only_where_needed():
+    df = pd.DataFrame({"email": ["a@x.com", "B@X.com", " c@x.com ", None]})
+    fixed, log = fix(df, email_columns=["email"])
+    assert fixed["email"].tolist()[:3] == ["a@x.com", "b@x.com", "c@x.com"]
+    assert sorted(e["fix"] for e in log if e["column"] == "email") == ["lowercase", "trim whitespace"]

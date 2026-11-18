@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- **Upload limit is 25 MB** (was 20). Still set with `DATAGUARD_MAX_UPLOAD_MB`.
+
+### Fixed
+- **Large files took minutes or seemed to hang** — a realistic 10 MB file (128,000 rows, some blank salaries, mixed date formats) took 118 s to check; it now takes 11 s, and a 24 MB file takes 24 s. Building the cleaned copy was the cost:
+  - Filling blank numbers (KNN) compared every row with a blank against every row in the file. It now uses a fixed random sample of 2,000 rows as neighbours and only works on rows that have a blank.
+  - Dates, emails and blank text cells were checked one cell at a time. Each is now one pass over the column, and dates already in the right format are skipped; each other date is parsed once.
+
 ## 1.2.0 (2026-11-17)
 
 ### New features

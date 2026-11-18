@@ -10,6 +10,10 @@ from src.anomalies import _is_code_column
 
 _DATE_PARSE_FORMATS = ["%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d"]
 
+# Rows used as neighbours when estimating a blank number. Enough to find close
+# matches, small enough that a 25 MB file is filled in seconds.
+KNN_DONORS = 2000
+
 ID_KEYWORDS = {"id", "name", "email", "student_id", "emp_id", "roll"}
 
 
@@ -70,9 +74,14 @@ def _impute_numeric_knn(
     if not mask_before.any().any():
         return
 
+    # KNN compares each row with a blank to every donor row. On a large file that is
+    # billions of distances (a 10 MB file took minutes), so the donors are a fixed
+    # random sample of KNN_DONORS rows, and only rows that have a blank are filled.
+    needs = mask_before.any(axis=1)
+    donors = subset if len(subset) <= KNN_DONORS else subset.sample(KNN_DONORS, random_state=0)
     imputer = KNNImputer(n_neighbors=3)
-    filled = imputer.fit_transform(subset)
-    filled_df = pd.DataFrame(filled, columns=numeric_cols, index=df.index)
+    imputer.fit(donors)
+    filled_df = pd.DataFrame(imputer.transform(subset[needs]), columns=numeric_cols, index=subset.index[needs])
 
     for col in numeric_cols:
         known = subset[col].dropna()
@@ -80,20 +89,19 @@ def _impute_numeric_knn(
         # 51333.33 in a salary column looked wrong, and the decimal made the cleaned
         # CSV write every other salary as 55000.0.
         whole = bool(len(known)) and bool((known % 1 == 0).all())
-        for idx in df.index:
-            if mask_before.at[idx, col]:
-                new_val = filled_df.at[idx, col]
-                if pd.notna(new_val):
-                    rounded = round(float(new_val)) if whole else round(float(new_val), 2)
-                    log.append({
-                        "row": int(idx),
-                        "column": col,
-                        "before": "",
-                        "after": str(rounded),
-                        "fix": "KNN imputation",
-                        "estimated": True,
-                    })
-                    df.at[idx, col] = rounded
+        for idx in subset.index[mask_before[col]]:
+            new_val = filled_df.at[idx, col]
+            if pd.notna(new_val):
+                rounded = round(float(new_val)) if whole else round(float(new_val), 2)
+                log.append({
+                    "row": int(idx),
+                    "column": col,
+                    "before": "",
+                    "after": str(rounded),
+                    "fix": "KNN imputation",
+                    "estimated": True,
+                })
+                df.at[idx, col] = rounded
 
 
 def _impute_categorical_mode(
@@ -110,18 +118,18 @@ def _impute_categorical_mode(
         if mode_values.empty:
             continue
         most_frequent = mode_values.mode().iloc[0]
-        for idx in df.index:
-            val = df.at[idx, col]
-            if pd.isna(val) or (isinstance(val, str) and val.strip() == ""):
-                log.append({
-                    "row": int(idx),
-                    "column": col,
-                    "before": "" if pd.isna(val) else val,
-                    "after": str(most_frequent),
-                    "fix": "mode imputation",
-                    "estimated": True,
-                })
-                df.at[idx, col] = most_frequent
+        values = df[col]
+        blank = values.isna() | (values.astype(str).str.strip() == "")
+        for idx, val in values[blank].items():
+            log.append({
+                "row": int(idx),
+                "column": col,
+                "before": "" if pd.isna(val) else val,
+                "after": str(most_frequent),
+                "fix": "mode imputation",
+                "estimated": True,
+            })
+            df.at[idx, col] = most_frequent
 
 
 def _strip_whitespace(df: pd.DataFrame, log: list[dict]) -> None:
@@ -148,21 +156,19 @@ def _lowercase_emails(df: pd.DataFrame, columns: list[str], log: list[dict]) -> 
     for col in columns:
         if col not in df.columns:
             continue
-        for idx in df.index:
-            val = df.at[idx, col]
-            if not isinstance(val, str):
-                continue
-            lowered = val.strip().lower()
-            if lowered != val:
-                fix_type = "trim+lowercase" if val != val.strip() else "lowercase"
-                log.append({
-                    "row": int(idx),
-                    "column": col,
-                    "before": val,
-                    "after": lowered,
-                    "fix": fix_type,
-                })
-                df.at[idx, col] = lowered
+        values = df[col]
+        is_text = values.map(lambda v: isinstance(v, str)).astype(bool)
+        lowered = values[is_text].str.strip().str.lower()
+        for idx in lowered.index[lowered != values[is_text]]:
+            val, new = values.at[idx], lowered.at[idx]
+            log.append({
+                "row": int(idx),
+                "column": col,
+                "before": val,
+                "after": new,
+                "fix": "trim+lowercase" if val != val.strip() else "lowercase",
+            })
+            df.at[idx, col] = new
 
 
 def _normalize_dates(
@@ -171,26 +177,28 @@ def _normalize_dates(
     for col in columns:
         if col not in df.columns:
             continue
-        for idx in df.index:
-            val = df.at[idx, col]
-            if pd.isna(val):
+        raw = df[col].map(lambda v: "" if pd.isna(v) else str(v).strip())
+        # Most cells are already right. Checking the whole column at once and only
+        # parsing the rest took a 10 MB file from minutes to seconds.
+        ok = pd.to_datetime(raw, format=target_format, errors="coerce")
+        already = ok.notna() & (ok.dt.strftime(target_format) == raw)
+        todo = raw[~already & (raw != "")]
+        cache: dict[str, str | None] = {}
+        for idx, value in todo.items():
+            if value not in cache:
+                parsed = _try_parse(value)
+                cache[value] = parsed.strftime(target_format) if parsed else None
+            normalized = cache[value]
+            if normalized is None or normalized == value:
                 continue
-            raw = str(val).strip()
-            if not raw:
-                continue
-            parsed = _try_parse(raw)
-            if parsed is None:
-                continue
-            normalized = parsed.strftime(target_format)
-            if normalized != raw:
-                log.append({
-                    "row": int(idx),
-                    "column": col,
-                    "before": raw,
-                    "after": normalized,
-                    "fix": "normalize date",
-                })
-                df.at[idx, col] = normalized
+            log.append({
+                "row": int(idx),
+                "column": col,
+                "before": value,
+                "after": normalized,
+                "fix": "normalize date",
+            })
+            df.at[idx, col] = normalized
 
 
 def _try_parse(value: str) -> datetime | None:
