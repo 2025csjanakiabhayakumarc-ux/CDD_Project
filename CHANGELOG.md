@@ -1,9 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.2.1 (2026-11-18)
 
 ### Changed
 - **Upload limit is 25 MB** (was 20). Still set with `DATAGUARD_MAX_UPLOAD_MB`.
+- **Large files say they take longer** — after choosing a file over 5 MB, the upload page says checking can take up to a minute (a 24 MB file takes about 40 seconds), so the wait doesn't look frozen.
 
 ### Fixed
 - **Auto-fix skipped any text column with a blank cell** — pandas does not count a text column with an empty cell as text, so trimming never ran on it: `"  Asha  "` stayed as it was whenever the name column had one blank. Every text column is trimmed now.
