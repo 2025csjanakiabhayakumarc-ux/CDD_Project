@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- **Blank numbers are left blank, not averaged** — a filled-in salary looks like real data, so auto-fix no longer estimates blank numbers (KNN). They stay blank and the checks flag them for a person.
+- **Blank names are rebuilt from the email** — `anita.hegde164@company.com` gives "Anita Hegde", marked "filled" in the change list. Addresses with no name in them (`12345@…`) are left for a person.
+- **Mistyped copies of a record are removed** — when one ID (e.g. `emp_id`) appears more than once and only some rows have the name the email spells (`Anitaa Hegde` next to `Anita Hegde`, both `anita.hegde164@…`), the others are dropped. If no row or every row matches, nothing is removed.
+- **"Needs a person" in the After auto-fix view** — every problem auto-fix leaves is tagged, next to the "Fixed by auto-fix" ones.
+
+On `employees_23mb.csv` (228,461 rows): duplicates 722 → 0 and blank names 668 → 0. Left for a person: 705 impossible dates, 694 wrong phones, 1,083 blank salaries, 906 emails with no `@`, and 326 salaries far outside the usual range.
+
 ## 1.2.1 (2026-11-18)
 
 ### Changed
