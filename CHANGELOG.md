@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- **Upload limit is 25 MB** (was 20). Still set with `DATAGUARD_MAX_UPLOAD_MB`.
+
+### Fixed
+- **Auto-fix skipped any text column with a blank cell** — pandas does not count a text column with an empty cell as text, so trimming never ran on it: `"  Asha  "` stayed as it was whenever the name column had one blank. Every text column is trimmed now.
+- **Dates written several ways were never fixed** — "Choose for me" only counted dates already in one format, so a column mixing `15/01/2005`, `2005.06.01` and `15 Jan 2005` was not treated as dates and auto-fix left it alone. It now counts any format auto-fix can read and rewrites them in the column's most common one. Auto-fix also reads `2005.06.01`, `01.08.2005`, `15 Jan 2005`, `15 January 2005`, `15-Jan-2005` and `Jan 15, 2005` (numeric dates day first).
+- **Large files took minutes or seemed to hang** — a realistic 10 MB file (128,000 rows, some blank salaries, mixed date formats) took 118 s to check; it now takes 11 s, and a 24 MB file takes 24 s. Building the cleaned copy was the cost:
+  - Filling blank numbers (KNN) compared every row with a blank against every row in the file. It now uses a fixed random sample of 2,000 rows as neighbours and only works on rows that have a blank.
+  - Dates, emails and blank text cells were checked one cell at a time. Each is now one pass over the column, and dates already in the right format are skipped; each other date is parsed once.
+
 ## 1.2.0 (2026-11-17)
 
 ### New features

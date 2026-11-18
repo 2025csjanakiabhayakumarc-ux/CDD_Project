@@ -147,3 +147,51 @@ def test_decimal_columns_keep_two_places():
     df = pd.DataFrame({"rate": [0.11, 0.12, 0.13, None]})
     _, log = fix(df)
     assert log[0]["after"] == "0.12"
+
+
+# ---- large files: the same fixes, done column-at-a-time ----
+
+def test_large_file_blanks_are_estimated_from_a_sample_of_rows():
+    import numpy as np
+
+    from src import autofix
+    rng = np.random.default_rng(0)
+    n = autofix.KNN_DONORS * 3
+    df = pd.DataFrame({"age": rng.integers(21, 60, n).astype(float),
+                       "salary": rng.integers(25_000, 150_000, n).astype(float)})
+    df.loc[::50, "salary"] = None
+    fixed, log = autofix.fix(df)
+    filled = [e for e in log if e["fix"] == "KNN imputation"]
+    assert len(filled) == n // 50
+    assert fixed["salary"].notna().all()
+    assert fixed["salary"].between(25_000, 150_000).all()
+
+
+def test_mixed_date_formats_are_normalised_and_correct_ones_left_alone():
+    df = pd.DataFrame({"d": ["2024-01-05", "05/01/2024", "05-01-2024", "", "not a date", "05/01/2024"]})
+    _, log = fix(df, date_columns=["d"])
+    dates = [(e["row"], e["before"], e["after"]) for e in log if e["fix"] == "normalize date"]
+    assert dates == [(1, "05/01/2024", "2024-01-05"), (2, "05-01-2024", "2024-01-05"), (5, "05/01/2024", "2024-01-05")]
+
+
+def test_emails_lowercased_only_where_needed():
+    df = pd.DataFrame({"email": ["a@x.com", "B@X.com", " c@x.com ", None]})
+    fixed, log = fix(df, email_columns=["email"])
+    assert fixed["email"].tolist()[:3] == ["a@x.com", "b@x.com", "c@x.com"]
+    assert sorted(e["fix"] for e in log if e["column"] == "email") == ["lowercase", "trim whitespace"]
+
+
+def test_text_columns_with_a_blank_are_still_trimmed():
+    """pandas calls a text column with a None "not text", so it was never trimmed."""
+    df = pd.DataFrame({"name": ["  Asha  ", None, "Ravi "]})
+    fixed, log = fix(df)
+    names = fixed["name"].tolist()
+    # The blank stays blank. Older pandas keeps it as None, newer pandas (CI) as NaN.
+    assert names[0] == "Asha" and names[2] == "Ravi" and pd.isna(names[1])
+    assert [e["fix"] for e in log] == ["trim whitespace", "trim whitespace"]
+
+
+def test_more_date_formats_are_rewritten():
+    df = pd.DataFrame({"d": ["2005.06.01", "15 Jan 2005", "01.08.2005", "Feb 16, 2005", "17-Mar-2005"]})
+    fixed, _ = fix(df, date_columns=["d"])
+    assert fixed["d"].tolist() == ["2005-06-01", "2005-01-15", "2005-08-01", "2005-02-16", "2005-03-17"]
