@@ -179,3 +179,17 @@ def test_emails_lowercased_only_where_needed():
     fixed, log = fix(df, email_columns=["email"])
     assert fixed["email"].tolist()[:3] == ["a@x.com", "b@x.com", "c@x.com"]
     assert sorted(e["fix"] for e in log if e["column"] == "email") == ["lowercase", "trim whitespace"]
+
+
+def test_text_columns_with_a_blank_are_still_trimmed():
+    """pandas calls a text column with a None "not text", so it was never trimmed."""
+    df = pd.DataFrame({"name": ["  Asha  ", None, "Ravi "]})
+    fixed, log = fix(df)
+    assert fixed["name"].tolist() == ["Asha", None, "Ravi"]
+    assert [e["fix"] for e in log] == ["trim whitespace", "trim whitespace"]
+
+
+def test_more_date_formats_are_rewritten():
+    df = pd.DataFrame({"d": ["2005.06.01", "15 Jan 2005", "01.08.2005", "Feb 16, 2005", "17-Mar-2005"]})
+    fixed, _ = fix(df, date_columns=["d"])
+    assert fixed["d"].tolist() == ["2005-06-01", "2005-01-15", "2005-08-01", "2005-02-16", "2005-03-17"]

@@ -8,7 +8,13 @@ from sklearn.impute import KNNImputer
 
 from src.anomalies import _is_code_column
 
-_DATE_PARSE_FORMATS = ["%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d"]
+# Formats auto-fix can read and rewrite in the rules' date format. Numeric ones are read
+# day first (01-08-2005 is 1 August), the convention in India. Only these three were read
+# before, so 2005.06.01 or "15 Jan 2005" were left as they were.
+DATE_PARSE_FORMATS = [
+    "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d", "%Y.%m.%d", "%d.%m.%Y",
+    "%d %b %Y", "%d %B %Y", "%d-%b-%Y", "%b %d, %Y", "%B %d, %Y",
+]
 
 # Rows used as neighbours when estimating a blank number. Enough to find close
 # matches, small enough that a 25 MB file is filled in seconds.
@@ -134,7 +140,11 @@ def _impute_categorical_mode(
 
 def _strip_whitespace(df: pd.DataFrame, log: list[dict]) -> None:
     for col in df.columns:
-        if not pd.api.types.is_string_dtype(df[col]):
+        # Not is_string_dtype: it says a text column with even one blank (None/NaN) is
+        # not text, so any column with a blank cell was never trimmed. The isinstance
+        # check below still leaves blanks and numbers alone.
+        dtype = df[col].dtype
+        if not (pd.api.types.is_object_dtype(dtype) or pd.api.types.is_string_dtype(dtype)):
             continue
         # One pass over the column, then only the cells that change are touched.
         # Reading every cell with df.at took seconds on files of a few MB.
@@ -201,13 +211,19 @@ def _normalize_dates(
             df.at[idx, col] = normalized
 
 
-def _try_parse(value: str) -> datetime | None:
-    for fmt in _DATE_PARSE_FORMATS:
+def parse_date(value: str) -> tuple[datetime, str] | None:
+    """(date, format it was written in) for a value in any DATE_PARSE_FORMATS, else None."""
+    for fmt in DATE_PARSE_FORMATS:
         try:
-            return datetime.strptime(value, fmt)
+            return datetime.strptime(value, fmt), fmt
         except (ValueError, TypeError):
             continue
     return None
+
+
+def _try_parse(value: str) -> datetime | None:
+    parsed = parse_date(value)
+    return parsed[0] if parsed else None
 
 
 def _drop_exact_duplicates(df: pd.DataFrame, log: list[dict]) -> pd.DataFrame:
