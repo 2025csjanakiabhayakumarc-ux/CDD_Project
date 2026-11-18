@@ -209,7 +209,7 @@
             <span class="finding-body">
               <span class="finding-top">
                 <span class="where">{% if f.row %}Row {{ f.row }}{% else %}Whole file{% endif %}{% if f.column %}, {{ f.column }}{% endif %}</span>
-                <span class="sev sev-{{ f.severity }}">{{ f.severity|capitalize }}</span><span class="fixed-tag">Fixed by auto-fix</span>
+                <span class="sev sev-{{ f.severity }}">{{ f.severity|capitalize }}</span><span class="fixed-tag">Fixed by auto-fix</span><span class="human-tag">Needs a person</span>
               </span>
               <span class="message f-msg">{{ f.message }}</span>
               <span class="hint"><span class="visually-hidden">How to fix it: </span><span class="f-hint">{{ f.hint }}</span></span>
@@ -236,7 +236,7 @@
   <section class="fixlog" aria-labelledby="fix-title">
     <div class="fixlog-head">
       <div><h2 id="fix-title" class="section-title">What auto-fix changes</h2>
-        <p class="muted">{{ report.fix_summary }}. Only safe changes are made for you. Problems that need a person, such as a missing name, are left alone.</p></div>
+        <p class="muted">{{ report.fix_summary }}. Only safe changes are made for you. Problems that need a person, such as a wrong phone number, an impossible date or a blank salary, are left for you and marked "Needs a person".</p></div>
       <div class="fixlog-actions">
         <a class="btn btn-quiet" href="{{ url_for('download_changes') }}">Download list of changes</a>
         <a class="btn btn-secondary" href="{{ url_for('download_cleaned') }}">Download cleaned CSV</a>
@@ -248,7 +248,7 @@
         <tbody>
           {% for e in report.fix_log %}
           <tr{% if e.get('estimated') %} class="is-estimated"{% endif %}><td>{% if e.row is not none %}{{ e.row|int + 2 }}{% endif %}</td><td>{{ e.column or 'whole row' }}</td>
-            <td class="before">{{ e.before }}</td><td>{{ e.after }}</td><td>{{ e.fix|capitalize }}{% if e.get('estimated') %} <span class="est-tag" title="Filled in from similar rows. Check it before you rely on it.">estimated</span>{% endif %}</td></tr>
+            <td class="before">{{ e.before }}</td><td>{{ e.after }}</td><td>{{ e.fix|capitalize }}{% if e.get('estimated') %} <span class="est-tag" title="Filled in by auto-fix, for example a name taken from the email address. Check it before you rely on it.">filled</span>{% endif %}</td></tr>
           {% endfor %}
         </tbody>
       </table>

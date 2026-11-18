@@ -1,12 +1,10 @@
 """Safe automatic fixes and smart imputation for CSV data issues."""
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 import pandas as pd
-from sklearn.impute import KNNImputer
-
-from src.anomalies import _is_code_column
 
 # Formats auto-fix can read and rewrite in the rules' date format. Numeric ones are read
 # day first (01-08-2005 is 1 August), the convention in India. Only these three were read
@@ -15,10 +13,6 @@ DATE_PARSE_FORMATS = [
     "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d", "%Y.%m.%d", "%d.%m.%Y",
     "%d %b %Y", "%d %B %Y", "%d-%b-%Y", "%b %d, %Y", "%B %d, %Y",
 ]
-
-# Rows used as neighbours when estimating a blank number. Enough to find close
-# matches, small enough that a 25 MB file is filled in seconds.
-KNN_DONORS = 2000
 
 ID_KEYWORDS = {"id", "name", "email", "student_id", "emp_id", "roll"}
 
@@ -29,10 +23,15 @@ def fix(
     email_columns: list[str] | None = None,
     date_format: str = "%Y-%m-%d",
     id_columns: list[str] | None = None,
+    key_columns: list[str] | None = None,
 ) -> tuple[pd.DataFrame, list[dict]]:
-    """Apply safe fixes and smart imputation, return (fixed_df, change_log).
+    """Apply safe fixes, return (fixed_df, change_log).
 
-    The input df is never modified in place.
+    key_columns: the columns that identify a record (e.g. emp_id), from the
+    duplicates rule. The input df is never modified in place.
+
+    Blank numbers (salaries, marks) are left blank on purpose: an average is a guess
+    that looks like real data, so the checks flag them for a person instead.
     """
     out = df.copy()
     log: list[dict] = []
@@ -41,13 +40,110 @@ def fix(
     _lowercase_emails(out, email_columns or [], log)
     _normalize_dates(out, date_columns or [], date_format, log)
 
+    names, email = _name_columns(out), _email_column(out, email_columns)
+    _names_from_email(out, names, email, log)
+
     protected = _protected_columns(out, id_columns)
-    _impute_numeric_knn(out, protected, log)
     _impute_categorical_mode(out, protected, log)
 
+    out = _drop_wrong_name_copies(out, key_columns or [], names, email, log)
     out = _drop_exact_duplicates(out, log)
 
     return out, log
+
+
+def name_from_email(email: object) -> str:
+    """The person's name an email address spells: anita.hegde164@x.com -> "Anita Hegde".
+
+    Returns "" when the address has no letters to go on.
+    """
+    if not isinstance(email, str) or not email.strip():
+        return ""
+    local = email.strip().split("@")[0]
+    # Digits, dots, underscores, hyphens and plus signs separate the words: anita.hegde164
+    # -> ["anita", "hegde"].
+    parts = re.split(r"[\d._+\-\s]+", local)
+    parts = [p for p in parts if p]
+    if not parts or not all(p.isalpha() for p in parts) or max(len(p) for p in parts) < 2:
+        return ""
+    return " ".join(p.capitalize() for p in parts)
+
+
+def _name_columns(df: pd.DataFrame) -> list[str]:
+    """Columns holding a person's full name: called "name", or ending in "name"/"_name"."""
+    out = []
+    for col in df.columns:
+        c = str(col).lower().replace(" ", "_")
+        if c in {"name", "full_name", "fullname", "student_name", "emp_name", "employee_name"}:
+            out.append(col)
+    return out
+
+
+def _email_column(df: pd.DataFrame, email_columns: list[str] | None) -> str | None:
+    for col in email_columns or []:
+        if col in df.columns:
+            return col
+    for col in df.columns:
+        if "email" in str(col).lower() or str(col).lower() in {"mail", "e_mail"}:
+            return col
+    return None
+
+
+def _names_from_email(df: pd.DataFrame, names: list[str], email: str | None, log: list[dict]) -> None:
+    """Fill a blank name from the email address on the same row, marked as filled."""
+    if not names or email is None:
+        return
+    for col in names:
+        values = df[col]
+        blank = values.isna() | (values.astype(str).str.strip() == "")
+        for idx in values.index[blank]:
+            guess = name_from_email(df.at[idx, email])
+            if not guess:
+                continue  # nothing to go on: left blank for a person
+            log.append({
+                "row": int(idx),
+                "column": col,
+                "before": "",
+                "after": guess,
+                "fix": "name from email",
+                "estimated": True,
+            })
+            df.at[idx, col] = guess
+
+
+def _drop_wrong_name_copies(
+    df: pd.DataFrame, keys: list[str], names: list[str], email: str | None, log: list[dict],
+) -> pd.DataFrame:
+    """For records repeated under one ID, keep the row whose name matches the email.
+
+    E0000164 appears as "Anita Hegde" and as "Anitaa Hegde", both with
+    anita.hegde164@company.com: the second is a mistyped copy. When some rows of a
+    repeated ID match their email and others don't, the others are removed. If none
+    or all match, nothing is removed and the duplicate check leaves it to a person.
+    """
+    keys = [k for k in keys if k in df.columns]
+    if not keys or not names or email is None:
+        return df
+    name = names[0]
+    repeated = df[df.duplicated(keys, keep=False)]
+    if repeated.empty:
+        return df
+    norm = lambda s: re.sub(r"\s+", " ", str(s)).strip().lower()
+    matches = repeated.apply(
+        lambda r: bool(name_from_email(r[email])) and norm(r[name]) == norm(name_from_email(r[email])), axis=1)
+    drop: list[int] = []
+    for _, group in matches.groupby([repeated[k] for k in keys]):
+        if group.any() and not group.all():
+            drop.extend(group.index[~group])
+    for idx in drop:
+        log.append({
+            "row": int(idx),
+            "column": None,
+            "before": f"copy of {df.loc[idx, keys[0]]} named \"{df.at[idx, name]}\"",
+            "after": "removed",
+            "fix": "drop duplicate",
+        })
+    return df.drop(index=drop)
 
 
 def _protected_columns(df: pd.DataFrame, id_columns: list[str] | None) -> set[str]:
@@ -59,55 +155,6 @@ def _protected_columns(df: pd.DataFrame, id_columns: list[str] | None) -> set[st
         if any(kw in col.lower() for kw in ID_KEYWORDS):
             protected.add(col.lower())
     return protected
-
-
-def _impute_numeric_knn(
-    df: pd.DataFrame, protected: set[str], log: list[dict],
-) -> None:
-    """Fill blank numeric cells using KNN imputation (k=3)."""
-    # Code columns (phone, pincode, account numbers) are labels, not amounts: two people
-    # with close phone numbers are not alike, so they must not steer the estimate.
-    numeric_cols = [
-        c for c in df.columns
-        if c.lower() not in protected and pd.api.types.is_numeric_dtype(df[c])
-        and not _is_code_column(c)
-    ]
-    if not numeric_cols:
-        return
-
-    subset = df[numeric_cols].copy()
-    mask_before = subset.isna()
-    if not mask_before.any().any():
-        return
-
-    # KNN compares each row with a blank to every donor row. On a large file that is
-    # billions of distances (a 10 MB file took minutes), so the donors are a fixed
-    # random sample of KNN_DONORS rows, and only rows that have a blank are filled.
-    needs = mask_before.any(axis=1)
-    donors = subset if len(subset) <= KNN_DONORS else subset.sample(KNN_DONORS, random_state=0)
-    imputer = KNNImputer(n_neighbors=3)
-    imputer.fit(donors)
-    filled_df = pd.DataFrame(imputer.transform(subset[needs]), columns=numeric_cols, index=subset.index[needs])
-
-    for col in numeric_cols:
-        known = subset[col].dropna()
-        # A column of whole numbers (salaries, marks) gets a whole-number estimate.
-        # 51333.33 in a salary column looked wrong, and the decimal made the cleaned
-        # CSV write every other salary as 55000.0.
-        whole = bool(len(known)) and bool((known % 1 == 0).all())
-        for idx in subset.index[mask_before[col]]:
-            new_val = filled_df.at[idx, col]
-            if pd.notna(new_val):
-                rounded = round(float(new_val)) if whole else round(float(new_val), 2)
-                log.append({
-                    "row": int(idx),
-                    "column": col,
-                    "before": "",
-                    "after": str(rounded),
-                    "fix": "KNN imputation",
-                    "estimated": True,
-                })
-                df.at[idx, col] = rounded
 
 
 def _impute_categorical_mode(

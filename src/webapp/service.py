@@ -254,10 +254,14 @@ def fix_settings_from(config: dict | None) -> dict:
     """
     rf = (config or {}).get("range_and_format") or {}
     if not isinstance(rf, dict):
-        return {}
+        rf = {}
+    dup = (config or {}).get("duplicates") or {}
     settings = {
         "email_columns": [str(c) for c in rf.get("email_columns") or []],
         "date_columns": [str(c) for c in rf.get("date_columns") or []],
+        # The ID columns: rows repeated under one ID whose name doesn't match the email
+        # are dropped as mistyped copies.
+        "key_columns": [str(c) for c in (dup.get("subset") or [] if isinstance(dup, dict) else [])],
     }
     if rf.get("date_format"):
         settings["date_format"] = str(rf["date_format"])
@@ -312,7 +316,7 @@ def _summarise_log(log: list[dict]) -> str:
     if cells_fixed:
         parts.append(f"{cells_fixed} cell{'s' if cells_fixed != 1 else ''} fixed")
     if estimated:
-        parts.append(f"{estimated} value{'s' if estimated != 1 else ''} estimated (marked)")
+        parts.append(f"{estimated} value{'s' if estimated != 1 else ''} filled in (marked)")
     if dups_removed:
         parts.append(f"{dups_removed} duplicate row{'s' if dups_removed != 1 else ''} removed")
     return ", ".join(parts) if parts else "No changes needed"
