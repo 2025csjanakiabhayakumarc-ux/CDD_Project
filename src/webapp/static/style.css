@@ -342,6 +342,11 @@ textarea:hover { border-color: var(--ink); }
 .fixed-tag { display: none; margin-left: 8px; padding: 1px 8px; border: 1px solid var(--ok); border-radius: 999px;
   font-size: 12px; font-weight: 600; color: var(--ok); white-space: nowrap; }
 .report.is-cleaned .finding.is-resolved .fixed-tag { display: inline-block; }
+/* What auto-fix can't settle (a wrong phone, an impossible date, a blank salary) is said
+   plainly to need a person in the After auto-fix view. */
+.human-tag { display: none; margin-left: 8px; padding: 1px 8px; border: 1px solid var(--err); border-radius: 999px;
+  font-size: 12px; font-weight: 600; color: var(--err); white-space: nowrap; }
+.report.is-cleaned .finding:not(.is-resolved) .human-tag { display: inline-block; }
 .report.is-cleaned .finding.is-resolved .finding-body > :not(.finding-top) { opacity: .55; }
 .grid td.is-focus, .grid tr.is-focus > * { animation: focus-pulse 1.5s ease-out 1; }
 .grid td.is-focus { outline: 2.5px solid var(--wine); outline-offset: -2px; z-index: 1; }

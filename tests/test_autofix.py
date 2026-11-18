@@ -76,21 +76,6 @@ def test_no_changes_returns_empty_log():
     assert len(fixed) == 2
 
 
-def test_knn_imputes_blank_salary():
-    import numpy as np
-    df = pd.DataFrame({
-        "emp_id": [f"E{i}" for i in range(10)],
-        "salary": [50000, 55000, 60000, np.nan, 52000, 58000, 61000, 54000, 57000, 59000],
-    })
-    fixed, log = fix(df)
-    assert pd.notna(fixed.at[3, "salary"])
-    knn_entries = [e for e in log if e["fix"] == "KNN imputation"]
-    assert len(knn_entries) == 1
-    assert knn_entries[0]["row"] == 3
-    assert knn_entries[0]["column"] == "salary"
-    assert knn_entries[0]["estimated"] is True
-
-
 def test_dd_mm_yyyy_date_converted():
     df = pd.DataFrame({"join_date": ["15/01/2024", "2024-03-10"]})
     fixed, log = fix(df, date_columns=["join_date"], date_format="%Y-%m-%d")
@@ -130,42 +115,7 @@ def test_change_log_marks_estimated():
         assert entry["estimated"] is True
 
 
-def test_estimate_ignores_code_columns_and_stays_whole():
-    """Phone numbers must not steer the estimate, and whole-number columns get whole numbers."""
-    df = pd.DataFrame({
-        "phone": [9000000001, 9000000002, 9000000003, 9999999999],
-        "salary": [50000, 60000, 70000, None],
-    })
-    fixed, log = fix(df)
-    est = [e for e in log if e.get("estimated")]
-    assert len(est) == 1 and est[0]["column"] == "salary"
-    assert est[0]["after"] == "60000"  # the plain average, not pulled by phone
-    assert fixed.loc[3, "phone"] == 9999999999
-
-
-def test_decimal_columns_keep_two_places():
-    df = pd.DataFrame({"rate": [0.11, 0.12, 0.13, None]})
-    _, log = fix(df)
-    assert log[0]["after"] == "0.12"
-
-
 # ---- large files: the same fixes, done column-at-a-time ----
-
-def test_large_file_blanks_are_estimated_from_a_sample_of_rows():
-    import numpy as np
-
-    from src import autofix
-    rng = np.random.default_rng(0)
-    n = autofix.KNN_DONORS * 3
-    df = pd.DataFrame({"age": rng.integers(21, 60, n).astype(float),
-                       "salary": rng.integers(25_000, 150_000, n).astype(float)})
-    df.loc[::50, "salary"] = None
-    fixed, log = autofix.fix(df)
-    filled = [e for e in log if e["fix"] == "KNN imputation"]
-    assert len(filled) == n // 50
-    assert fixed["salary"].notna().all()
-    assert fixed["salary"].between(25_000, 150_000).all()
-
 
 def test_mixed_date_formats_are_normalised_and_correct_ones_left_alone():
     df = pd.DataFrame({"d": ["2024-01-05", "05/01/2024", "05-01-2024", "", "not a date", "05/01/2024"]})
@@ -195,3 +145,54 @@ def test_more_date_formats_are_rewritten():
     df = pd.DataFrame({"d": ["2005.06.01", "15 Jan 2005", "01.08.2005", "Feb 16, 2005", "17-Mar-2005"]})
     fixed, _ = fix(df, date_columns=["d"])
     assert fixed["d"].tolist() == ["2005-06-01", "2005-01-15", "2005-08-01", "2005-02-16", "2005-03-17"]
+
+
+
+# ---- blanks: names rebuilt from the email, numbers left for a person ----
+
+def test_blank_salaries_are_left_blank_not_averaged():
+    """An average looks like real data; the checks flag the blank for a person instead."""
+    df = pd.DataFrame({"emp_id": ["E1", "E2", "E3", "E4"], "salary": [50000, 60000, 70000, None]})
+    fixed, log = fix(df)
+    assert pd.isna(fixed.at[3, "salary"])
+    assert not [e for e in log if e["column"] == "salary"]
+
+
+def test_name_from_email():
+    from src.autofix import name_from_email
+    assert name_from_email("anita.hegde164@company.com") == "Anita Hegde"
+    assert name_from_email("ravi_kumar@x.in") == "Ravi Kumar"
+    assert name_from_email("12345@x.com") == ""
+    assert name_from_email("j@x.com") == ""
+    assert name_from_email(None) == ""
+
+
+def test_blank_names_are_rebuilt_from_the_email_and_marked():
+    df = pd.DataFrame({"name": ["Asha Rao", "", None], "email": ["asha.rao1@c.com", "anita.hegde164@c.com", "99@c.com"]})
+    fixed, log = fix(df, email_columns=["email"])
+    assert fixed["name"].tolist()[:2] == ["Asha Rao", "Anita Hegde"]
+    assert pd.isna(fixed.at[2, "name"])  # nothing to go on: left for a person
+    filled = [e for e in log if e["fix"] == "name from email"]
+    assert [(e["row"], e["after"], e["estimated"]) for e in filled] == [(1, "Anita Hegde", True)]
+
+
+def test_repeated_id_keeps_the_row_whose_name_matches_the_email():
+    df = pd.DataFrame({
+        "emp_id": ["E1", "E1", "E2", "E2", "E3", "E3"],
+        "name": ["Anita Hegde", "Anitaa Hegde", "Priyaa Gowda", "Priya Gowda", "", "h"],
+        "email": ["anita.hegde1@c.com"] * 2 + ["priya.gowda2@c.com"] * 2 + ["lakshmi.hegde3@c.com"] * 2,
+    })
+    fixed, log = fix(df, email_columns=["email"], key_columns=["emp_id"])
+    assert fixed.to_dict("list") == {
+        "emp_id": ["E1", "E2", "E3"],
+        "name": ["Anita Hegde", "Priya Gowda", "Lakshmi Hegde"],
+        "email": ["anita.hegde1@c.com", "priya.gowda2@c.com", "lakshmi.hegde3@c.com"],
+    }
+    assert sum(e["fix"] == "drop duplicate" for e in log) == 3
+
+
+def test_repeated_id_is_left_alone_when_no_name_matches():
+    """Nothing to choose by: the duplicate check leaves it to a person."""
+    df = pd.DataFrame({"emp_id": ["E1", "E1"], "name": ["Asha", "Usha"], "email": ["x1@c.com", "x1@c.com"]})
+    fixed, _ = fix(df, email_columns=["email"], key_columns=["emp_id"])
+    assert len(fixed) == 2
