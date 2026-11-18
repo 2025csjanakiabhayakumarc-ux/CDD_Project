@@ -136,3 +136,14 @@ def test_pincode_column_is_detected():
 def test_plain_numbers_are_not_mistaken_for_phones():
     config, _ = infer_config(pd.DataFrame({"salary": ["55000", "62000", "48000"]}))
     assert "india_formats" not in config
+
+
+def test_dates_written_several_ways_are_still_found():
+    """No single format reached 90%, so mixed-format date columns were never fixed."""
+    from src.infer import infer_config
+    df = pd.DataFrame({"dob": ["15/01/2005", "2005-03-20", "2005.06.01", "01-08-2005",
+                               "15 Jan 2005", "2005-03-20", "2005/09/10"]})
+    config, explanations = infer_config(df)
+    assert config["range_and_format"]["date_columns"] == ["dob"]
+    assert config["range_and_format"]["date_format"] == "%Y-%m-%d"
+    assert "formats" in explanations["dob"]

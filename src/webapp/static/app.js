@@ -89,7 +89,12 @@
 
     var setReady = function (ready) {
       submit.disabled = !ready;
-      help.textContent = ready ? "Ready. Most files take a few seconds." : "Choose a file first.";
+      // A 24 MB file takes about 40 seconds; say so, so a long wait doesn't look frozen.
+      var file = input.files && input.files[0];
+      var big = file && file.size > 5 * 1024 * 1024;
+      help.textContent = !ready ? "Choose a file first."
+        : big ? "Ready. This is a large file, so checking can take up to a minute."
+        : "Ready. Most files take a few seconds.";
     };
     setReady(false);
 

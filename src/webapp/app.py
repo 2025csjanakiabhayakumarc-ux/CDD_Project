@@ -22,7 +22,7 @@ from . import service
 load_dotenv()
 
 ALLOWED_SUFFIXES = (".csv", ".tsv", ".txt", ".xlsx")
-MAX_UPLOAD_MB = int(os.environ.get("DATAGUARD_MAX_UPLOAD_MB", "20"))
+MAX_UPLOAD_MB = int(os.environ.get("DATAGUARD_MAX_UPLOAD_MB", "25"))
 # The last upload is kept on disk so "Download cleaned CSV" can use it. It used to sit in
 # the session cookie, but browsers drop cookies over about 4 KB, so downloads failed for
 # any real file. Only a random id goes in the cookie now.

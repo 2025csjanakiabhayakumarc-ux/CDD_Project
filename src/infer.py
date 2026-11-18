@@ -223,6 +223,22 @@ def _detect_date(
         if ratio >= MATCH_THRESHOLD:
             explanations[col] = f"detected as date {label} ({ratio:.0%} match)"
             return fmt
+    # Dates written several ways (15/01/2005, 2005.06.01, 15 Jan 2005) are the ones most
+    # in need of fixing, but no single format reached 90%, so the column was not treated
+    # as dates at all and auto-fix never touched it. Count a value in any format auto-fix
+    # can read, and use the most common format as the one to convert to.
+    from src.autofix import parse_date
+
+    found = [parse_date(v) for v in sample]
+    formats = pd.Series([p[1] for p in found if p])
+    if len(formats) / total >= MATCH_THRESHOLD:
+        counts = formats.value_counts()
+        top = counts[counts == counts.max()].index
+        fmt = "%Y-%m-%d" if "%Y-%m-%d" in top else top[0]
+        label = dict(_DATE_FORMATS).get(fmt, fmt)
+        explanations[col] = (f"detected as dates in {formats.nunique()} formats; "
+                             f"auto-fix rewrites them as {label}")
+        return fmt
     return None
 
 
