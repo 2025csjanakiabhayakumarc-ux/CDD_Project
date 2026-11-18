@@ -6,7 +6,7 @@ A CSV data-validation engine built for **1BCS303 — Collaborative Development a
 
 | # | Role | CDD Focus |
 |---|------|-----------|
-| 1 | Git & Collaboration | Code Intergration, Gitflow, branch protection, issue board,UI,Prototype, LLM |
+| 1 | Git & Collaboration | Code Integration, Gitflow, branch protection, issue board,UI,Prototype, LLM |
 | 2 | CI/CD Engineer | GitHub Actions, test pipeline |
 | 3 | Container & IaC Engineer | Dockerfile, Docker Compose |
 | 4 | UX Researcher | Personas |
